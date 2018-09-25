@@ -142,7 +142,7 @@ if (NOT CAF_BUILD_STATIC_ONLY)
                         SOVERSION ${CAF_VERSION}
                         VERSION ${CAF_VERSION}
                         OUTPUT_NAME caf_core)
-  if (CYGWIN)
+  if (WIN32 OR CYGWIN)
     install(TARGETS libcaf_core_shared RUNTIME DESTINATION bin)
   else()
     install(TARGETS libcaf_core_shared LIBRARY DESTINATION lib)
