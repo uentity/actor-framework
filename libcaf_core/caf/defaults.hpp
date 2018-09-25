@@ -20,6 +20,8 @@
 
 #include <chrono>
 #include <cstddef>
+#include <algorithm>
+#include <limits>
 
 #include "caf/atom.hpp"
 #include "caf/timestamp.hpp"
@@ -29,55 +31,71 @@
 namespace caf {
 namespace defaults {
 
+namespace {
+
+using us_t = std::chrono::microseconds;
+
+constexpr caf::timespan us(us_t::rep x) {
+  return std::chrono::duration_cast<caf::timespan>(us_t{x});
+}
+
+using ms_t = std::chrono::milliseconds;
+
+constexpr caf::timespan ms(ms_t::rep x) {
+  return std::chrono::duration_cast<caf::timespan>(ms_t{x});
+}
+
+} // namespace <anonymous>
+
 namespace stream {
 
-extern const timespan desired_batch_complexity;
-extern const timespan max_batch_delay;
-extern const timespan credit_round_interval;
+constexpr timespan desired_batch_complexity = us(50);
+constexpr timespan max_batch_delay = ms(5);
+constexpr timespan credit_round_interval = ms(10);
 
 } // namespace streaming
 
 namespace scheduler {
 
-extern const atom_value policy;
-extern const char* profiling_output_file;
-extern const size_t max_threads;
-extern const size_t max_throughput;
-extern const timespan profiling_resolution;
+constexpr atom_value policy = atom("stealing");
+constexpr char* profiling_output_file = "";
+size_t max_threads();
+constexpr size_t max_throughput = std::numeric_limits<size_t>::max();
+constexpr timespan profiling_resolution = ms(100);
 
 } // namespace scheduler
 
 namespace work_stealing {
 
-extern const size_t aggressive_poll_attempts;
-extern const size_t aggressive_steal_interval;
-extern const size_t moderate_poll_attempts;
-extern const size_t moderate_steal_interval;
-extern const timespan moderate_sleep_duration;
-extern const size_t relaxed_steal_interval;
-extern const timespan relaxed_sleep_duration;
+constexpr size_t aggressive_poll_attempts = 100;
+constexpr size_t aggressive_steal_interval = 10;
+constexpr size_t moderate_poll_attempts = 500;
+constexpr size_t moderate_steal_interval = 5;
+constexpr timespan moderate_sleep_duration = us(50);
+constexpr size_t relaxed_steal_interval = 1;
+constexpr timespan relaxed_sleep_duration = ms(10);
 
 } // namespace work_stealing
 
 namespace logger {
 
-extern const atom_value console;
-extern const atom_value verbosity;
-extern const char* component_filter;
-extern const char* console_format;
-extern const char* file_format;
-extern const char* file_name;
+constexpr atom_value console = atom("none");
+constexpr atom_value verbosity = atom("trace");
+constexpr char* component_filter = "";
+constexpr char* console_format = "%m";
+constexpr char* file_format = "%r %c %p %a %t %C %M %F:%L %m%n";
+constexpr char* file_name = "actor_log_[PID]_[TIMESTAMP]_[NODE].log";
 
 } // namespace logger
 
 namespace middleman {
 
-extern const char* app_identifier;
-extern const atom_value network_backend;
-extern const size_t max_consecutive_reads;
-extern const size_t heartbeat_interval;
-extern const size_t cached_udp_buffers;
-extern const size_t max_pending_msgs;
+constexpr char* app_identifier = "";
+constexpr atom_value network_backend = atom("default");
+constexpr size_t max_consecutive_reads = 50;
+constexpr size_t heartbeat_interval = 0;
+constexpr size_t cached_udp_buffers = 10;
+constexpr size_t max_pending_msgs = 10;
 
 } // namespace middleman
 

@@ -66,7 +66,7 @@ actor_system_config::actor_system_config()
     return static_cast<size_t>(x.count() / 1000000);
   };
   scheduler_policy = sr::policy;
-  scheduler_max_threads = sr::max_threads;
+  scheduler_max_threads = sr::max_threads();
   scheduler_max_throughput = sr::max_throughput;
   scheduler_enable_profiling = false;
   scheduler_profiling_ms_resolution = to_ms(sr::profiling_resolution);
