@@ -95,7 +95,7 @@ struct fixture {
     auto last = end(invoked);
     auto i = find(first, last, true);
     if (i != last) {
-      CAF_REQUIRE_EQUAL(count(i, last, true), 1u);
+      CAF_REQUIRE(count(i, last, true) == 1);
       return distance(first, i);
     }
     return -1;
@@ -104,7 +104,7 @@ struct fixture {
   array_type invoked;
 };
 
-} // namespace <anonymous>
+} // namespace
 
 CAF_TEST_FIXTURE_SCOPE(atom_constants_tests, fixture)
 

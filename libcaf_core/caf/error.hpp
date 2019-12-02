@@ -19,16 +19,15 @@
 #pragma once
 
 #include <cstdint>
-#include <utility>
 #include <functional>
+#include <utility>
 
+#include "caf/atom.hpp"
 #include "caf/fwd.hpp"
-#include "caf/atom.hpp"
 #include "caf/none.hpp"
-#include "caf/atom.hpp"
 
-#include "caf/meta/type_name.hpp"
 #include "caf/meta/omittable_if_empty.hpp"
+#include "caf/meta/type_name.hpp"
 
 #include "caf/detail/comparable.hpp"
 
@@ -56,8 +55,8 @@ public:
 
 /// Convenience alias for `std::enable_if<has_make_error<T>::value, U>::type`.
 template <class T, class U = void>
-using enable_if_has_make_error_t
-  = typename std::enable_if<has_make_error<T>::value, U>::type;
+using enable_if_has_make_error_t = typename std::enable_if<
+  has_make_error<T>::value, U>::type;
 
 /// A serializable type for storing error codes with category and optional,
 /// human-readable context information. Unlike error handling classes from
@@ -93,10 +92,9 @@ class error : detail::comparable<error> {
 public:
   // -- member types -----------------------------------------------------------
 
-  using inspect_fun = std::function<error (meta::type_name_t,
-                                           uint8_t&, atom_value&,
-                                           meta::omittable_if_empty_t,
-                                           message&)>;
+  using inspect_fun = std::function<
+    error(meta::type_name_t, uint8_t&, atom_value&, meta::omittable_if_empty_t,
+          message&)>;
 
   // -- constructors, destructors, and assignment operators --------------------
 
@@ -184,9 +182,8 @@ public:
   template <class Inspector>
   friend typename Inspector::result_type inspect(Inspector& f, error& x) {
     auto fun = [&](meta::type_name_t x0, uint8_t& x1, atom_value& x2,
-                   meta::omittable_if_empty_t x3, message& x4) -> error{
-      return f(x0, x1, x2, x3, x4);
-    };
+                   meta::omittable_if_empty_t x3,
+                   message& x4) -> error { return f(x0, x1, x2, x3, x4); };
     return x.apply(fun);
   }
 
@@ -252,4 +249,3 @@ bool operator!=(E x, const error& y) {
 }
 
 } // namespace caf
-

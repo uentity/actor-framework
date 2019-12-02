@@ -4,49 +4,51 @@ project(caf_io C CXX)
 # e.g., for creating proper Xcode projects
 file(GLOB_RECURSE LIBCAF_IO_HDRS "caf/*.hpp")
 
+enum_to_string("caf/io/basp/message_type.hpp" "message_type_to_string.cpp")
+enum_to_string("caf/io/network/operation.hpp" "operation_to_string.cpp")
+
 # list cpp files excluding platform-dependent files
 set(LIBCAF_IO_SRCS
-  src/abstract_broker.cpp
-  src/acceptor.cpp
-  src/acceptor_manager.cpp
-  src/acceptor_manager.cpp
-  src/basp_broker.cpp
-  src/broker.cpp
-  src/connection_helper.cpp
-  src/datagram_handler.cpp
-  src/datagram_manager.cpp
-  src/datagram_servant.cpp
-  src/datagram_servant_impl.cpp
-  src/default_multiplexer.cpp
-  src/doorman.cpp
-  src/doorman_impl.cpp
-  src/event_handler.cpp
-  src/header.cpp
-  src/instance.cpp
-  src/interfaces.cpp
-  src/ip_endpoint.cpp
-  src/manager.cpp
-  src/message_queue.cpp
-  src/message_type.cpp
-  src/middleman.cpp
-  src/middleman_actor.cpp
-  src/middleman_actor_impl.cpp
-  src/multiplexer.cpp
-  src/multiplexer.cpp
-  src/native_socket.cpp
-  src/pipe_reader.cpp
-  src/protocol.cpp
-  src/receive_buffer.cpp
-  src/routing_table.cpp
-  src/scribe.cpp
-  src/scribe_impl.cpp
-  src/socket_guard.cpp
-  src/stream.cpp
-  src/stream_manager.cpp
-  src/tcp.cpp
-  src/test_multiplexer.cpp
-  src/udp.cpp
-  src/worker.cpp
+  "${CMAKE_CURRENT_BINARY_DIR}/message_type_to_string.cpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/operation_to_string.cpp"
+  src/detail/socket_guard.cpp
+  src/io/abstract_broker.cpp
+  src/io/basp/header.cpp
+  src/io/basp/instance.cpp
+  src/io/basp/message_queue.cpp
+  src/io/basp/routing_table.cpp
+  src/io/basp/worker.cpp
+  src/io/basp_broker.cpp
+  src/io/broker.cpp
+  src/io/connection_helper.cpp
+  src/io/datagram_servant.cpp
+  src/io/doorman.cpp
+  src/io/middleman.cpp
+  src/io/middleman_actor.cpp
+  src/io/middleman_actor_impl.cpp
+  src/io/network/acceptor.cpp
+  src/io/network/acceptor_manager.cpp
+  src/io/network/datagram_handler.cpp
+  src/io/network/datagram_manager.cpp
+  src/io/network/datagram_servant_impl.cpp
+  src/io/network/default_multiplexer.cpp
+  src/io/network/doorman_impl.cpp
+  src/io/network/event_handler.cpp
+  src/io/network/interfaces.cpp
+  src/io/network/ip_endpoint.cpp
+  src/io/network/manager.cpp
+  src/io/network/multiplexer.cpp
+  src/io/network/native_socket.cpp
+  src/io/network/pipe_reader.cpp
+  src/io/network/protocol.cpp
+  src/io/network/receive_buffer.cpp
+  src/io/network/scribe_impl.cpp
+  src/io/network/stream.cpp
+  src/io/network/stream_manager.cpp
+  src/io/network/test_multiplexer.cpp
+  src/io/scribe.cpp
+  src/policy/tcp.cpp
+  src/policy/udp.cpp
 )
 
 add_custom_target(libcaf_io)
@@ -62,11 +64,11 @@ if (NOT CAF_BUILD_STATIC_ONLY)
   set_target_properties(libcaf_io_shared
                         PROPERTIES
                         SOVERSION ${CAF_VERSION}
-                        VERSION ${CAF_VERSION}
+                        VERSION ${CAF_LIB_VERSION}
                         OUTPUT_NAME caf_io)
   install(TARGETS libcaf_io_shared
-          RUNTIME DESTINATION bin
-          LIBRARY DESTINATION lib)
+          RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+          LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
   add_dependencies(libcaf_io_shared libcaf_io)
 endif ()
 
@@ -79,11 +81,11 @@ if (CAF_BUILD_STATIC_ONLY OR CAF_BUILD_STATIC)
     $<INSTALL_INTERFACE:include>
   )
   set_target_properties(libcaf_io_static PROPERTIES OUTPUT_NAME caf_io_static)
-  install(TARGETS libcaf_io_static ARCHIVE DESTINATION lib)
+  install(TARGETS libcaf_io_static ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
   add_dependencies(libcaf_io_static libcaf_io)
 endif ()
 
 # install includes
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/caf
-        DESTINATION include
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING PATTERN "*.hpp")

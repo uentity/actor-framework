@@ -19,10 +19,10 @@
 #include "caf/error.hpp"
 
 #include "caf/config.hpp"
+#include "caf/deep_to_string.hpp"
+#include "caf/deserializer.hpp"
 #include "caf/message.hpp"
 #include "caf/serializer.hpp"
-#include "caf/deserializer.hpp"
-#include "caf/deep_to_string.hpp"
 
 namespace caf {
 
@@ -74,12 +74,12 @@ error& error::operator=(const error& x) {
 }
 
 error::error(uint8_t x, atom_value y)
-    : data_(x != 0 ? new data{x, y, none} : nullptr) {
+  : data_(x != 0 ? new data{x, y, none} : nullptr) {
   // nop
 }
 
 error::error(uint8_t x, atom_value y, message z)
-    : data_(x != 0 ? new data{x, y, std::move(z)} : nullptr) {
+  : data_(x != 0 ? new data{x, y, std::move(z)} : nullptr) {
   // nop
 }
 

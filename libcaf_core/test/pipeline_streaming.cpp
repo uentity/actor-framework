@@ -25,6 +25,8 @@
 
 #include "caf/actor_system.hpp"
 #include "caf/actor_system_config.hpp"
+#include "caf/attach_stream_sink.hpp"
+#include "caf/attach_stream_stage.hpp"
 #include "caf/event_based_actor.hpp"
 #include "caf/stateful_actor.hpp"
 
@@ -63,9 +65,10 @@ std::function<bool(const buf&)> is_done(scheduled_actor* self) {
   };
 }
 
-template <class T>
-std::function<void (T&, const error&)> fin(scheduled_actor* self) {
+template <class T, class Self>
+std::function<void(T&, const error&)> fin(Self* self) {
   return [=](T&, const error& err) {
+    self->state.fin_called += 1;
     if (err == none) {
       CAF_MESSAGE(self->name() << " is done");
     } else {
@@ -74,81 +77,71 @@ std::function<void (T&, const error&)> fin(scheduled_actor* self) {
   };
 }
 
+TESTEE_STATE(infinite_source) {
+  int fin_called = 0;
+};
+
 TESTEE(infinite_source) {
   return {
-    [=](string& fname) -> output_stream<int> {
+    [=](string& fname) -> result<stream<int>> {
       CAF_CHECK_EQUAL(fname, "numbers.txt");
       CAF_CHECK_EQUAL(self->mailbox().empty(), true);
-      return self->make_source(
-        [](int& x) {
-          x = 0;
-        },
+      return attach_stream_source(
+        self, [](int& x) { x = 0; },
         [](int& x, downstream<int>& out, size_t num) {
           for (size_t i = 0; i < num; ++i)
             out.push(x++);
         },
-        [](const int&) {
-          return false;
-        },
-        fin<int>(self)
-      );
-    }
+        [](const int&) { return false; }, fin<int>(self));
+    },
   };
 }
 
+TESTEE_STATE(file_reader) {
+  int fin_called = 0;
+};
+
 VARARGS_TESTEE(file_reader, size_t buf_size) {
   return {
-    [=](string& fname) -> output_stream<int> {
+    [=](string& fname) -> result<stream<int>> {
       CAF_CHECK_EQUAL(fname, "numbers.txt");
       CAF_CHECK_EQUAL(self->mailbox().empty(), true);
-      return self->make_source(
-        init(buf_size),
-        push_from_buf,
-        is_done(self),
-        fin<buf>(self)
-      );
+      return attach_stream_source(self, init(buf_size), push_from_buf,
+                                  is_done(self), fin<buf>(self));
     },
     [=](string& fname, actor next) {
       CAF_CHECK_EQUAL(fname, "numbers.txt");
       CAF_CHECK_EQUAL(self->mailbox().empty(), true);
-      self->make_source(
-        next,
-        init(buf_size),
-        push_from_buf,
-        is_done(self),
-        fin<buf>(self)
-      );
-    }
+      attach_stream_source(self, next, init(buf_size), push_from_buf,
+                           is_done(self), fin<buf>(self));
+    },
   };
 }
 
 TESTEE_STATE(sum_up) {
   int x = 0;
+  int fin_called = 0;
 };
 
 TESTEE(sum_up) {
   using intptr = int*;
   return {
     [=](stream<int>& in) {
-      return self->make_sink(
+      return attach_stream_sink(
+        self,
         // input stream
         in,
         // initialize state
-        [=](intptr& x) {
-          x = &self->state.x;
-        },
+        [=](intptr& x) { x = &self->state.x; },
         // processing step
-        [](intptr& x, int y) {
-          *x += y;
-        },
-        fin<intptr>(self)
-      );
-    }
+        [](intptr& x, int y) { *x += y; }, fin<intptr>(self));
+    },
   };
 }
 
 TESTEE_STATE(delayed_sum_up) {
   int x = 0;
+  int fin_called = 0;
 };
 
 TESTEE(delayed_sum_up) {
@@ -156,43 +149,46 @@ TESTEE(delayed_sum_up) {
   self->set_default_handler(skip);
   return {
     [=](ok_atom) {
-      self->become(
-        [=](stream<int>& in) {
-          self->set_default_handler(print_and_drop);
-          return self->make_sink(
-            // input stream
-            in,
-            // initialize state
-            [=](intptr& x) {
-              x = &self->state.x;
-            },
-            // processing step
-            [](intptr& x, int y) {
-              *x += y;
-            },
-            // cleanup
-            fin<intptr>(self)
-          );
-        }
-      );
-    }
+      self->become([=](stream<int>& in) {
+        self->set_default_handler(print_and_drop);
+        return attach_stream_sink(
+          self,
+          // input stream
+          in,
+          // initialize state
+          [=](intptr& x) { x = &self->state.x; },
+          // processing step
+          [](intptr& x, int y) { *x += y; },
+          // cleanup
+          fin<intptr>(self));
+      });
+    },
   };
 }
+
+TESTEE_STATE(broken_sink) {
+  int fin_called = 0;
+};
 
 TESTEE(broken_sink) {
   CAF_IGNORE_UNUSED(self);
   return {
     [=](stream<int>&, const actor&) {
       // nop
-    }
+    },
   };
 }
+
+TESTEE_STATE(filter) {
+  int fin_called = 0;
+};
 
 TESTEE(filter) {
   CAF_IGNORE_UNUSED(self);
   return {
     [=](stream<int>& in) {
-      return self->make_stage(
+      return attach_stream_stage(
+        self,
         // input stream
         in,
         // initialize state
@@ -205,17 +201,21 @@ TESTEE(filter) {
             out.push(x);
         },
         // cleanup
-        fin<unit_t>(self)
-      );
-    }
+        fin<unit_t>(self));
+    },
   };
 }
+
+TESTEE_STATE(doubler) {
+  int fin_called = 0;
+};
 
 TESTEE(doubler) {
   CAF_IGNORE_UNUSED(self);
   return {
     [=](stream<int>& in) {
-      return self->make_stage(
+      return attach_stream_stage(
+        self,
         // input stream
         in,
         // initialize state
@@ -223,13 +223,10 @@ TESTEE(doubler) {
           // nop
         },
         // processing step
-        [](unit_t&, downstream<int>& out, int x) {
-          out.push(x * 2);
-        },
+        [](unit_t&, downstream<int>& out, int x) { out.push(x * 2); },
         // cleanup
-        fin<unit_t>(self)
-      );
-    }
+        fin<unit_t>(self));
+    },
   };
 }
 
@@ -245,7 +242,7 @@ struct fixture : test_coordinator_fixture<> {
   }
 };
 
-} // namespace <anonymous>
+} // namespace
 
 // -- unit tests ---------------------------------------------------------------
 
@@ -269,6 +266,9 @@ CAF_TEST(depth_2_pipeline_50_items) {
   CAF_MESSAGE("expect close message from src and then result from snk");
   expect((downstream_msg::close), from(src).to(snk));
   CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.x, 1275);
+  CAF_MESSAGE("verify that each actor called its finalizer once");
+  CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.fin_called, 1);
+  CAF_CHECK_EQUAL(deref<file_reader_actor>(src).state.fin_called, 1);
 }
 
 CAF_TEST(depth_2_pipeline_setup2_50_items) {
@@ -289,6 +289,9 @@ CAF_TEST(depth_2_pipeline_setup2_50_items) {
   CAF_MESSAGE("expect close message from src and then result from snk");
   expect((downstream_msg::close), from(src).to(snk));
   CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.x, 1275);
+  CAF_MESSAGE("verify that each actor called its finalizer once");
+  CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.fin_called, 1);
+  CAF_CHECK_EQUAL(deref<file_reader_actor>(src).state.fin_called, 1);
 }
 
 CAF_TEST(delayed_depth_2_pipeline_50_items) {
@@ -315,6 +318,9 @@ CAF_TEST(delayed_depth_2_pipeline_50_items) {
   CAF_MESSAGE("expect close message from src and then result from snk");
   expect((downstream_msg::close), from(src).to(snk));
   CAF_CHECK_EQUAL(deref<delayed_sum_up_actor>(snk).state.x, 1275);
+  CAF_MESSAGE("verify that each actor called its finalizer once");
+  CAF_CHECK_EQUAL(deref<delayed_sum_up_actor>(snk).state.fin_called, 1);
+  CAF_CHECK_EQUAL(deref<file_reader_actor>(src).state.fin_called, 1);
 }
 
 CAF_TEST(depth_2_pipeline_500_items) {
@@ -342,6 +348,9 @@ CAF_TEST(depth_2_pipeline_500_items) {
   CAF_MESSAGE("expect close message from src and then result from snk");
   expect((downstream_msg::close), from(src).to(snk));
   CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.x, 125250);
+  CAF_MESSAGE("verify that each actor called its finalizer once");
+  CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.fin_called, 1);
+  CAF_CHECK_EQUAL(deref<file_reader_actor>(src).state.fin_called, 1);
 }
 
 CAF_TEST(depth_2_pipeline_error_during_handshake) {
@@ -354,6 +363,9 @@ CAF_TEST(depth_2_pipeline_error_during_handshake) {
   expect((open_stream_msg), from(self).to(snk));
   expect((upstream_msg::forced_drop), from(_).to(src));
   expect((error), from(snk).to(self).with(sec::stream_init_failed));
+  run();
+  CAF_MESSAGE("verify that the file reader called its finalizer once");
+  CAF_CHECK_EQUAL(deref<file_reader_actor>(src).state.fin_called, 1);
 }
 
 CAF_TEST(depth_2_pipeline_error_at_source) {
@@ -370,6 +382,8 @@ CAF_TEST(depth_2_pipeline_error_at_source) {
   hard_kill(src);
   expect((downstream_msg::batch), from(src).to(snk));
   expect((downstream_msg::forced_close), from(_).to(snk));
+  CAF_MESSAGE("verify that the sink called its finalizer once");
+  CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.fin_called, 1);
 }
 
 CAF_TEST(depth_2_pipelin_error_at_sink) {
@@ -385,6 +399,8 @@ CAF_TEST(depth_2_pipelin_error_at_sink) {
   hard_kill(snk);
   expect((upstream_msg::ack_open), from(snk).to(src));
   expect((upstream_msg::forced_drop), from(_).to(src));
+  CAF_MESSAGE("verify that the source called its finalizer once");
+  CAF_CHECK_EQUAL(deref<file_reader_actor>(src).state.fin_called, 1);
 }
 
 CAF_TEST(depth_3_pipeline_50_items) {
@@ -419,6 +435,10 @@ CAF_TEST(depth_3_pipeline_50_items) {
   expect((upstream_msg::ack_batch), from(snk).to(stg));
   expect((downstream_msg::close), from(stg).to(snk));
   CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.x, 625);
+  CAF_MESSAGE("verify that each actor called its finalizer once");
+  CAF_CHECK_EQUAL(deref<file_reader_actor>(src).state.fin_called, 1);
+  CAF_CHECK_EQUAL(deref<filter_actor>(stg).state.fin_called, 1);
+  CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.fin_called, 1);
 }
 
 CAF_TEST(depth_4_pipeline_500_items) {
@@ -426,8 +446,8 @@ CAF_TEST(depth_4_pipeline_500_items) {
   auto stg1 = sys.spawn(filter);
   auto stg2 = sys.spawn(doubler);
   auto snk = sys.spawn(sum_up);
-  CAF_MESSAGE(CAF_ARG(self) << CAF_ARG(src) << CAF_ARG(stg1)
-              << CAF_ARG(stg2) << CAF_ARG(snk));
+  CAF_MESSAGE(CAF_ARG(self) << CAF_ARG(src) << CAF_ARG(stg1) << CAF_ARG(stg2)
+                            << CAF_ARG(snk));
   CAF_MESSAGE("initiate stream handshake");
   self->send(snk * stg2 * stg1 * src, "numbers.txt");
   expect((string), from(self).to(src).with("numbers.txt"));
@@ -441,6 +461,11 @@ CAF_TEST(depth_4_pipeline_500_items) {
   run();
   CAF_MESSAGE("check sink result");
   CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.x, 125000);
+  CAF_MESSAGE("verify that each actor called its finalizer once");
+  CAF_CHECK_EQUAL(deref<file_reader_actor>(src).state.fin_called, 1);
+  CAF_CHECK_EQUAL(deref<filter_actor>(stg1).state.fin_called, 1);
+  CAF_CHECK_EQUAL(deref<doubler_actor>(stg2).state.fin_called, 1);
+  CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.fin_called, 1);
 }
 
 CAF_TEST(depth_3_pipeline_graceful_shutdown) {
@@ -461,6 +486,10 @@ CAF_TEST(depth_3_pipeline_graceful_shutdown) {
   run();
   CAF_MESSAGE("check sink result");
   CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.x, 625);
+  CAF_MESSAGE("verify that each actor called its finalizer once");
+  CAF_CHECK_EQUAL(deref<file_reader_actor>(src).state.fin_called, 1);
+  CAF_CHECK_EQUAL(deref<filter_actor>(stg).state.fin_called, 1);
+  CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.fin_called, 1);
 }
 
 CAF_TEST(depth_3_pipeline_infinite_source) {
@@ -478,6 +507,9 @@ CAF_TEST(depth_3_pipeline_infinite_source) {
   CAF_MESSAGE("send exit to the source and expect the stream to terminate");
   anon_send_exit(src, exit_reason::user_shutdown);
   run();
+  CAF_MESSAGE("verify that each actor called its finalizer once");
+  CAF_CHECK_EQUAL(deref<filter_actor>(stg).state.fin_called, 1);
+  CAF_CHECK_EQUAL(deref<sum_up_actor>(snk).state.fin_called, 1);
 }
 
 CAF_TEST_FIXTURE_SCOPE_END()

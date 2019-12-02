@@ -27,6 +27,7 @@
 #include <unordered_map>
 
 #include "caf/actor_factory.hpp"
+#include "caf/actor_profiler.hpp"
 #include "caf/config_option.hpp"
 #include "caf/config_option_adder.hpp"
 #include "caf/config_option_set.hpp"
@@ -300,6 +301,11 @@ public:
 
   thread_hooks thread_hooks_;
 
+  /// Provides system-wide callbacks for several actor operations.
+  /// @experimental
+  /// @note Has no effect unless building CAF with CAF_ENABLE_ACTOR_PROFILER.
+  actor_profiler* profiler = nullptr;
+
   // -- run-time type information ----------------------------------------------
 
   portable_name_map type_names_by_rtti;
@@ -415,14 +421,14 @@ private:
 const settings& content(const actor_system_config& cfg);
 
 /// Tries to retrieve the value associated to `name` from `cfg`.
-/// @relates config_value
+/// @relates actor_system_config
 template <class T>
 optional<T> get_if(const actor_system_config* cfg, string_view name) {
   return get_if<T>(&content(*cfg), name);
 }
 
 /// Retrieves the value associated to `name` from `cfg`.
-/// @relates config_value
+/// @relates actor_system_config
 template <class T>
 T get(const actor_system_config& cfg, string_view name) {
   return get<T>(content(cfg), name);
@@ -430,7 +436,7 @@ T get(const actor_system_config& cfg, string_view name) {
 
 /// Retrieves the value associated to `name` from `cfg` or returns
 /// `default_value`.
-/// @relates config_value
+/// @relates actor_system_config
 template <class T, class = typename std::enable_if<
                      !std::is_pointer<T>::value
                      && !std::is_convertible<T, string_view>::value>::type>
@@ -440,10 +446,17 @@ T get_or(const actor_system_config& cfg, string_view name, T default_value) {
 
 /// Retrieves the value associated to `name` from `cfg` or returns
 /// `default_value`.
-/// @relates config_value
+/// @relates actor_system_config
 inline std::string get_or(const actor_system_config& cfg, string_view name,
                           string_view default_value) {
   return get_or(content(cfg), name, default_value);
+}
+
+/// Returns whether `xs` associates a value of type `T` to `name`.
+/// @relates actor_system_config
+template <class T>
+bool holds_alternative(const actor_system_config& cfg, string_view name) {
+  return holds_alternative<T>(content(cfg), name);
 }
 
 } // namespace caf

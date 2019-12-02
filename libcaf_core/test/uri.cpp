@@ -218,7 +218,7 @@ bool operator "" _i(const char* cstr, size_t cstr_len) {
   return err != none;
 }
 
-} // namespace <anonymous>
+} // namespace
 
 CAF_TEST_FIXTURE_SCOPE(uri_tests, fixture)
 
@@ -288,6 +288,7 @@ CAF_TEST(builder construction) {
 CAF_TEST(from string) {
   // all combinations of components
   ROUNDTRIP("http:file");
+  ROUNDTRIP("http:foo-bar");
   ROUNDTRIP("http:file?a=1&b=2");
   ROUNDTRIP("http:file#42");
   ROUNDTRIP("http:file?a=1&b=2#42");

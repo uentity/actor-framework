@@ -23,6 +23,7 @@
 
 #include "caf/config.hpp"
 
+#include "caf/intrusive/new_round_result.hpp"
 #include "caf/intrusive/task_queue.hpp"
 #include "caf/intrusive/task_result.hpp"
 
@@ -115,8 +116,7 @@ public:
   /// Applies `f` to each element in the queue, excluding cached elements.
   template <class F>
   void peek_all(F f) const {
-    for (auto i = list_.begin(); i != list_.end(); ++i)
-      f(*promote(i.ptr));
+    list_.peek_all(f);
   }
 
   // -- modifiers -------------------------------------------------------------

@@ -65,20 +65,27 @@ enum class pec : uint8_t {
   missing_argument,
   /// Stopped because the key of a category was taken.
   illegal_category,
+  /// Stopped at an unexpected field name while reading a user-defined type.
+  invalid_field_name,
+  /// Stopped at a repeated field name while reading a user-defined type.
+  repeated_field_name,
+  /// Stopped while reading a user-defined type with one or more missing
+  /// mandatory fields.
+  missing_field,
 };
+
+/// @relates pec
+std::string to_string(pec);
 
 /// Returns an error object from given error code.
 error make_error(pec code);
 
 /// Returns an error object from given error code with additional context
 /// information for where the parser stopped in the input.
-error make_error(pec code, size_t line, size_t column);
+error make_error(pec code, int32_t line, int32_t column);
 
 /// Returns an error object from given error code with additional context
 /// information for where the parser stopped in the argument.
 error make_error(pec code, string_view argument);
-
-/// @relates pec
-const char* to_string(pec x);
 
 } // namespace caf

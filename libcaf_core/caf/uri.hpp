@@ -22,7 +22,6 @@
 #include <vector>
 
 #include "caf/detail/comparable.hpp"
-#include "caf/detail/parser/state.hpp"
 #include "caf/detail/unordered_flat_map.hpp"
 #include "caf/fwd.hpp"
 #include "caf/intrusive_ptr.hpp"
@@ -109,6 +108,11 @@ public:
   /// Returns a hash code over all components.
   size_t hash_code() const noexcept;
 
+  /// Returns a new URI with the `authority` component only.
+  /// @returns A new URI in the form `scheme://authority` if the authority
+  ///          exists, otherwise `none`.`
+  optional<uri> authority_only() const;
+
   // -- comparison -------------------------------------------------------------
 
   int compare(const uri& other) const noexcept;
@@ -140,6 +144,9 @@ std::string to_string(const uri::authority_type& x);
 
 /// @relates uri
 error parse(string_view str, uri& dest);
+
+/// @relates uri
+expected<uri> make_uri(string_view str);
 
 } // namespace caf
 

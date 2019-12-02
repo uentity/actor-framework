@@ -18,14 +18,12 @@
 
 #pragma once
 
-#include "caf/scheduled_actor.hpp"
-
-#include "caf/mixin/sender.hpp"
 #include "caf/mixin/requester.hpp"
+#include "caf/mixin/sender.hpp"
+#include "caf/scheduled_actor.hpp"
+#include "caf/typed_actor_view_base.hpp"
 
 namespace caf {
-
-struct typed_actor_view_base { };
 
 template <class... Sigs>
 class typed_actor_view : public extend<typed_actor_view_base,
@@ -34,6 +32,8 @@ class typed_actor_view : public extend<typed_actor_view_base,
 public:
   /// Stores the template parameter pack.
   using signatures = detail::type_list<Sigs...>;
+
+  using pointer = scheduled_actor*;
 
   typed_actor_view(scheduled_actor* ptr) : self_(ptr) {
     // nop
@@ -77,6 +77,10 @@ public:
     return self_->system();
   }
 
+  actor_system& home_system() const {
+    return self_->home_system();
+  }
+
   void quit(exit_reason reason = exit_reason::normal) {
     self_->quit(reason);
   }
@@ -112,23 +116,27 @@ public:
 
   /// Returns a pointer to the sender of the current message.
   /// @pre `current_mailbox_element() != nullptr`
-  inline strong_actor_ptr& current_sender() {
+  strong_actor_ptr& current_sender() {
     return self_->current_sender();
   }
 
   /// Returns a pointer to the currently processed mailbox element.
-  inline mailbox_element* current_mailbox_element() {
+  mailbox_element* current_mailbox_element() {
     return self_->current_mailbox_element();
   }
 
   /// @private
-  actor_control_block* ctrl() const {
+  actor_control_block* ctrl() const noexcept {
     CAF_ASSERT(self_ != nullptr);
     return actor_control_block::from(self_);;
   }
 
   /// @private
-  scheduled_actor* internal_ptr() const {
+  scheduled_actor* internal_ptr() const noexcept {
+    return self_;
+  }
+
+  operator scheduled_actor*() const noexcept {
     return self_;
   }
 
@@ -137,4 +145,3 @@ private:
 };
 
 } // namespace caf
-

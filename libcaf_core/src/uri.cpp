@@ -26,7 +26,9 @@
 #include "caf/detail/parser/read_uri.hpp"
 #include "caf/detail/uri_impl.hpp"
 #include "caf/error.hpp"
+#include "caf/expected.hpp"
 #include "caf/make_counted.hpp"
+#include "caf/optional.hpp"
 #include "caf/serializer.hpp"
 
 namespace caf {
@@ -69,6 +71,19 @@ string_view uri::fragment() const noexcept {
 
 size_t uri::hash_code() const noexcept {
   return detail::fnv_hash(str());
+}
+
+optional<uri> uri::authority_only() const {
+  if (empty() || authority().empty())
+    return none;
+  auto result = make_counted<detail::uri_impl>();
+  result->scheme = impl_->scheme;
+  result->authority = impl_->authority;
+  auto& str = result->str;
+  str = impl_->scheme;
+  str += "://";
+  str += to_string(impl_->authority);
+  return uri{std::move(result)};
 }
 
 // -- comparison ---------------------------------------------------------------
@@ -131,12 +146,18 @@ std::string to_string(const uri::authority_type& x) {
 }
 
 error parse(string_view str, uri& dest) {
-  detail::parse_state ps{str.begin(), str.end()};
+  string_parser_state ps{str.begin(), str.end()};
   parse(ps, dest);
   if (ps.code == pec::success)
     return none;
-  return make_error(ps.code, static_cast<size_t>(ps.line),
-                    static_cast<size_t>(ps.column));
+  return make_error(ps);
+}
+
+expected<uri> make_uri(string_view str) {
+  uri result;
+  if (auto err = parse(str, result))
+    return err;
+  return result;
 }
 
 } // namespace caf

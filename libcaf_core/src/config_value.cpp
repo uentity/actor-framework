@@ -21,11 +21,14 @@
 
 #include <ostream>
 
+#include "caf/deep_to_string.hpp"
 #include "caf/detail/ini_consumer.hpp"
 #include "caf/detail/parser/read_ini.hpp"
 #include "caf/detail/type_traits.hpp"
 #include "caf/expected.hpp"
+#include "caf/parser_state.hpp"
 #include "caf/pec.hpp"
+#include "caf/string_view.hpp"
 
 namespace caf {
 
@@ -43,7 +46,7 @@ const char* type_names[] {
   "dictionary",
 };
 
-} // namespace <anonymous>
+} // namespace
 
 // -- constructors, destructors, and assignment operators ----------------------
 
@@ -65,10 +68,8 @@ expected<config_value> config_value::parse(string_view::iterator first,
     if (++i == last)
       return make_error(pec::unexpected_eof);
   // Dispatch to parser.
-  parser::state<string_view::iterator> res;
   detail::ini_value_consumer f;
-  res.i = i;
-  res.e = last;
+  string_parser_state res{i, last};
   parser::read_ini_value(res, f);
   if (res.code == pec::success)
     return std::move(f.result);

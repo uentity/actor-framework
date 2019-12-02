@@ -32,8 +32,9 @@
 #include "caf/actor_cast.hpp"
 #include "caf/actor_clock.hpp"
 #include "caf/actor_config.hpp"
-#include "caf/actor_marker.hpp"
+#include "caf/actor_profiler.hpp"
 #include "caf/actor_registry.hpp"
+#include "caf/actor_traits.hpp"
 #include "caf/composable_behavior_based_actor.hpp"
 #include "caf/detail/init_fun_factory.hpp"
 #include "caf/detail/spawn_fwd.hpp"
@@ -117,6 +118,7 @@ class actor_system {
 public:
   friend class logger;
   friend class io::middleman;
+  friend class net::middleman;
   friend class abstract_actor;
 
   /// The number of actors implictly spawned by the actor system on startup.
@@ -151,6 +153,7 @@ public:
       middleman,
       opencl_manager,
       openssl_manager,
+      network_manager,
       num_ids
     };
 
@@ -279,6 +282,13 @@ public:
   /// @throws `std::logic_error` if module is not loaded.
   openssl::manager& openssl_manager() const;
 
+  /// Returns `true` if the network module is available, `false` otherwise.
+  bool has_network_manager() const noexcept;
+
+  /// Returns the network manager (middleman) instance.
+  /// @throws `std::logic_error` if module is not loaded.
+  net::middleman& network_manager();
+
   /// Returns a dummy execution unit that forwards
   /// everything to the scheduler.
   scoped_execution_unit* dummy_execution_unit();
@@ -402,13 +412,13 @@ public:
                       F& fun, Ts&&... xs) {
     using impl = infer_impl_from_fun_t<F>;
     check_invariants<impl>();
-    static constexpr bool dynamically_typed = is_dynamically_typed<impl>::value;
-    static_assert(dynamically_typed,
+    using traits = actor_traits<impl>;
+    static_assert(traits::is_dynamically_typed,
                   "only dynamically-typed actors can join groups");
     static constexpr bool spawnable = detail::spawnable<F, impl, Ts...>();
     static_assert(spawnable,
                   "cannot spawn function-based actor with given arguments");
-    static constexpr bool enabled = dynamically_typed && spawnable;
+    static constexpr bool enabled = traits::is_dynamically_typed && spawnable;
     auto irange = make_input_range(first, second);
     cfg.groups = &irange;
     return spawn_functor<Os>(detail::bool_token<enabled>{}, cfg, fun,
@@ -536,8 +546,46 @@ public:
     auto res = make_actor<C>(next_actor_id(), node(), this,
                              cfg, std::forward<Ts>(xs)...);
     auto ptr = static_cast<C*>(actor_cast<abstract_actor*>(res));
+#ifdef CAF_ENABLE_ACTOR_PROFILER
+    profiler_add_actor(*ptr, cfg.parent);
+#endif
     ptr->launch(cfg.host, has_lazy_init_flag(Os), has_hide_flag(Os));
     return res;
+  }
+
+  void profiler_add_actor(const local_actor& self, const local_actor* parent) {
+    if (profiler_)
+      profiler_->add_actor(self, parent);
+  }
+
+  void profiler_remove_actor(const local_actor& self) {
+    if (profiler_)
+      profiler_->remove_actor(self);
+  }
+
+  void profiler_before_processing(const local_actor& self,
+                                  const mailbox_element& element) {
+    if (profiler_)
+      profiler_->before_processing(self, element);
+  }
+
+  void profiler_after_processing(const local_actor& self,
+                                 invoke_message_result result) {
+    if (profiler_)
+      profiler_->after_processing(self, result);
+  }
+
+  void profiler_before_sending(const local_actor& self,
+                               mailbox_element& element) {
+    if (profiler_)
+      profiler_->before_sending(self, element);
+  }
+
+  void profiler_before_sending_scheduled(const local_actor& self,
+                                         caf::actor_clock::time_point timeout,
+                                         mailbox_element& element) {
+    if (profiler_)
+      profiler_->before_sending_scheduled(self, timeout, element);
   }
 
   /// @endcond
@@ -567,6 +615,9 @@ private:
   }
 
   // -- member variables -------------------------------------------------------
+
+  /// Provides system-wide callbacks for several actor operations.
+  actor_profiler* profiler_;
 
   /// Used to generate ascending actor IDs.
   std::atomic<size_t> ids_;
@@ -625,4 +676,3 @@ private:
 };
 
 } // namespace caf
-

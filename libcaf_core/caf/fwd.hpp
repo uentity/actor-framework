@@ -56,6 +56,8 @@ template <class> struct timeout_definition;
 
 template <class, class> class stream_stage;
 
+template <class Iterator, class Sentinel = Iterator> struct parser_state;
+
 // -- 3 param templates --------------------------------------------------------
 
 template <class, class, int> class actor_cast_access;
@@ -73,10 +75,6 @@ template <class...> class typed_event_based_actor;
 template <class...> class typed_response_promise;
 template <class...> class variant;
 
-// -- variadic templates with fixed arguments ----------------------------------
-//
-template <class, class...> class output_stream;
-
 // clang-format on
 
 // -- classes ------------------------------------------------------------------
@@ -90,6 +88,7 @@ class actor_companion;
 class actor_config;
 class actor_control_block;
 class actor_pool;
+class actor_profiler;
 class actor_proxy;
 class actor_registry;
 class actor_system;
@@ -179,6 +178,7 @@ enum class atom_value : uint64_t;
 enum class byte : uint8_t;
 enum class sec : uint8_t;
 enum class stream_priority;
+enum class invoke_message_result;
 
 // -- aliases ------------------------------------------------------------------
 
@@ -226,6 +226,14 @@ struct header;
 } // namespace basp
 
 } // namespace io
+
+// -- networking classes -------------------------------------------------------
+
+namespace net {
+
+class middleman;
+
+} // namespace net
 
 // -- OpenCL classes -----------------------------------------------------------
 

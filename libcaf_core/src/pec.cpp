@@ -23,38 +23,13 @@
 #include "caf/make_message.hpp"
 #include "caf/string_view.hpp"
 
-namespace {
-
-constexpr const char* tbl[] = {
-  "success",
-  "trailing_character",
-  "unexpected_eof",
-  "unexpected_character",
-  "negative_duration",
-  "duration_overflow",
-  "too_many_characters",
-  "illegal_escape_sequence",
-  "unexpected_newline",
-  "integer_overflow",
-  "integer_underflow",
-  "exponent_underflow",
-  "exponent_overflow",
-  "type_mismatch",
-  "not_an_option",
-  "illegal_argument",
-  "missing_argument",
-  "illegal_category",
-};
-
-} // namespace <anonymous>
-
 namespace caf {
 
 error make_error(pec code) {
   return {static_cast<uint8_t>(code), atom("parser")};
 }
 
-error make_error(pec code, size_t line, size_t column) {
+error make_error(pec code, int32_t line, int32_t column) {
   config_value::dictionary context;
   context["line"] = line;
   context["column"] = column;
@@ -67,10 +42,6 @@ error make_error(pec code, string_view argument) {
   context["argument"] = std::string{argument.begin(), argument.end()};
   return {static_cast<uint8_t>(code), atom("parser"),
           make_message(std::move(context))};
-}
-
-const char* to_string(pec x) {
-  return tbl[static_cast<uint8_t>(x)];
 }
 
 } // namespace caf

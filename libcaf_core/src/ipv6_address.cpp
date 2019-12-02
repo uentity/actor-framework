@@ -23,6 +23,7 @@
 #include "caf/detail/parser/read_ipv6_address.hpp"
 #include "caf/error.hpp"
 #include "caf/ipv4_address.hpp"
+#include "caf/parser_state.hpp"
 #include "caf/pec.hpp"
 #include "caf/string_view.hpp"
 
@@ -77,7 +78,7 @@ inline uint64_t net_order_64(uint64_t value) {
 
 std::array<uint32_t, 3> v4_prefix{{0, 0, net_order_32(0x0000FFFFu)}};
 
-} // namespace <anonymous>
+} // namespace
 
 // -- constructors, destructors, and assignment operators ----------------------
 
@@ -171,7 +172,7 @@ u16_range longest_streak(u16_iterator first, u16_iterator last) {
   return range_size(result) >= range_size(next_streak) ? result : next_streak;
 }
 
-} // namespace <anonymous>
+} // namespace
 
 std::string to_string(ipv6_address x) {
   // Shortcut for embedded v4 addresses.
@@ -212,8 +213,8 @@ std::string to_string(ipv6_address x) {
 
 error parse(string_view str, ipv6_address& dest) {
   using namespace detail;
-  parser::state<string_view::iterator> res{str.begin(), str.end()};
   ipv6_address_consumer f{dest};
+  string_parser_state res{str.begin(), str.end()};
   parser::read_ipv6_address(res, f);
   if (res.code == pec::success)
     return none;

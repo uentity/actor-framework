@@ -204,16 +204,21 @@ error node_id::serialize(serializer& sink) const {
 }
 
 error node_id::deserialize(deserializer& source) {
-  atom_value impl;
+  auto impl = static_cast<atom_value>(0);
   if (auto err = source(impl))
     return err;
   if (impl == atom("")) {
     data_.reset();
     return none;
   }
-  if (impl == atom("default")) {
-    if (data_ == nullptr || data_->implementation_id() != atom("default"))
-      data_.reset(new default_data);
+  if (impl == default_data::class_id) {
+    if (data_ == nullptr
+        || data_->implementation_id() != default_data::class_id)
+      data_ = make_counted<default_data>();
+    return data_->deserialize(source);
+  } else if (impl == uri_data::class_id) {
+    if (data_ == nullptr || data_->implementation_id() != uri_data::class_id)
+      data_ = make_counted<uri_data>();
     return data_->deserialize(source);
   }
   return sec::unknown_type;

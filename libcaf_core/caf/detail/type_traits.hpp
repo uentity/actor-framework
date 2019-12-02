@@ -445,6 +445,7 @@ struct callable_trait<R (Ts...)> {
   using arg_types = type_list<Ts...>;
   using fun_sig = R (Ts...);
   using fun_type = std::function<R (Ts...)>;
+  static constexpr size_t num_args = sizeof...(Ts);
 };
 
 // member const function pointer
@@ -507,6 +508,9 @@ struct get_callable_trait_helper<T, false, false> {};
 /// the call operator.
 template <class T>
 struct get_callable_trait : get_callable_trait_helper<decay_t<T>> {};
+
+template <class T>
+using get_callable_trait_t = typename get_callable_trait<T>::type;
 
 /// Checks wheter `T` is a function or member function.
 template <class T>
@@ -769,6 +773,19 @@ CAF_HAS_ALIAS_TRAIT(mapped_type);
 
 // -- constexpr functions for use in enable_if & friends -----------------------
 
+template <class List1, class List2>
+struct all_constructible : std::false_type {};
+
+template <>
+struct all_constructible<type_list<>, type_list<>> : std::true_type {};
+
+template <class T, class... Ts, class U, class... Us>
+struct all_constructible<type_list<T, Ts...>, type_list<U, Us...>> {
+  static constexpr bool value = std::is_constructible<T, U>::value
+                                && all_constructible<type_list<Ts...>,
+                                                     type_list<Us...>>::value;
+};
+
 /// Checks whether T behaves like `std::map`.
 template <class T>
 struct is_map_like {
@@ -783,6 +800,38 @@ struct is_list_like {
   static constexpr bool value = is_iterable<T>::value
                                 && has_value_type_alias<T>::value
                                 && !has_mapped_type_alias<T>::value;
+};
+
+template <class F, class... Ts>
+struct is_invocable {
+private:
+  template <class U>
+  static auto sfinae(U* f)
+    -> decltype((*f)(std::declval<Ts>()...), std::true_type());
+
+  template <class U>
+  static auto sfinae(...) -> std::false_type;
+
+  using sfinae_type = decltype(sfinae<F>(nullptr));
+
+public:
+  static constexpr bool value = sfinae_type::value;
+};
+
+template <class R, class F, class... Ts>
+struct is_invocable_r {
+private:
+  template <class U>
+  static auto sfinae(U* f)
+    -> std::is_same<R, decltype((*f)(std::declval<Ts>()...))>;
+
+  template <class U>
+  static auto sfinae(...) -> std::false_type;
+
+  using sfinae_type = decltype(sfinae<F>(nullptr));
+
+public:
+  static constexpr bool value = sfinae_type::value;
 };
 
 } // namespace detail

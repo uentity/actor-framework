@@ -6,11 +6,11 @@ file(GLOB_RECURSE LIBCAF_OPENSSL_HDRS "caf/*.hpp")
 
 # list cpp files excluding platform-dependent files
 set(LIBCAF_OPENSSL_SRCS
-  src/manager.cpp
-  src/middleman_actor.cpp
-  src/publish.cpp
-  src/remote_actor.cpp
-  src/session.cpp
+  src/openssl/manager.cpp
+  src/openssl/middleman_actor.cpp
+  src/openssl/publish.cpp
+  src/openssl/remote_actor.cpp
+  src/openssl/session.cpp
 )
 
 add_custom_target(libcaf_openssl)
@@ -32,12 +32,12 @@ if (NOT CAF_BUILD_STATIC_ONLY)
   set_target_properties(libcaf_openssl_shared
                         PROPERTIES
                         SOVERSION ${CAF_VERSION}
-                        VERSION ${CAF_VERSION}
+                        VERSION ${CAF_LIB_VERSION}
                         OUTPUT_NAME caf_openssl)
   if (CYGWIN)
-    install(TARGETS libcaf_openssl_shared RUNTIME DESTINATION bin)
+    install(TARGETS libcaf_openssl_shared RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
   elseif (NOT WIN32)
-    install(TARGETS libcaf_openssl_shared LIBRARY DESTINATION lib)
+    install(TARGETS libcaf_openssl_shared LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
   endif()
   add_dependencies(libcaf_openssl_shared libcaf_openssl)
 endif ()
@@ -51,7 +51,7 @@ if (CAF_BUILD_STATIC_ONLY OR CAF_BUILD_STATIC)
   set_target_properties(libcaf_openssl_static PROPERTIES
                         OUTPUT_NAME caf_openssl_static)
   if(NOT WIN32)
-    install(TARGETS libcaf_openssl_static ARCHIVE DESTINATION lib)
+    install(TARGETS libcaf_openssl_static ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
   endif()
   add_dependencies(libcaf_openssl_static libcaf_openssl)
 endif ()
@@ -61,6 +61,6 @@ include_directories(. ${INCLUDE_DIRS})
 
 # install includes
 if(NOT WIN32)
-  install(DIRECTORY caf/ DESTINATION include/caf FILES_MATCHING PATTERN "*.hpp")
+  install(DIRECTORY caf/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/caf FILES_MATCHING PATTERN "*.hpp")
 endif()
 

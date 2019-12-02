@@ -4,6 +4,10 @@ project(caf C CXX)
 include(CheckCSourceCompiles)
 include(CheckCSourceRuns)
 
+# Set default install paths.
+# See https://cmake.org/cmake/help/latest/module/GNUInstallDirs.html
+include(GNUInstallDirs)
+
 get_directory_property(_parent PARENT_DIRECTORY)
 if(_parent)
   set(caf_is_subproject ON)
@@ -92,6 +96,16 @@ function(pretty_yes var)
   endif()
 endfunction(pretty_yes)
 
+add_executable(caf-generate-enum-strings cmake/caf-generate-enum-strings.cpp)
+
+function(enum_to_string relative_input_file relative_output_file)
+  set(input "${CMAKE_CURRENT_SOURCE_DIR}/${relative_input_file}")
+  set(output "${CMAKE_CURRENT_BINARY_DIR}/${relative_output_file}")
+  add_custom_command(OUTPUT "${output}"
+                     COMMAND caf-generate-enum-strings "${input}" "${output}"
+                     DEPENDS caf-generate-enum-strings "${input}")
+endfunction()
+
 ################################################################################
 #                        set prefix paths if available                         #
 ################################################################################
@@ -153,7 +167,12 @@ math(EXPR CAF_VERSION_PATCH "${VERSION_INT} % 100")
 # create full version string
 set(CAF_VERSION
     "${CAF_VERSION_MAJOR}.${CAF_VERSION_MINOR}.${CAF_VERSION_PATCH}")
-
+# set the library version for our shared library targets
+if(CMAKE_HOST_SYSTEM_NAME MATCHES "OpenBSD")
+  set(CAF_LIB_VERSION "${CAF_VERSION_MAJOR}.${CAF_VERSION_MINOR}")
+else()
+  set(CAF_LIB_VERSION "${CAF_VERSION}")
+endif()
 
 ################################################################################
 #   set output paths for binaries and libraries if not provided by the user    #
@@ -336,7 +355,7 @@ if(MINGW)
   build_string("EXTRA_FLAGS" "-static")
 elseif(CYGWIN)
   build_string("EXTRA_FLAGS" "-U__STRICT_ANSI__")
-elseif(NOT CAF_BUILD_STATIC_ONLY)
+else()
   build_string("EXTRA_FLAGS" "-fPIC")
 endif()
 if (WIN32)
@@ -406,7 +425,7 @@ endif()
 ################################################################################
 
 # install includes from test
-install(DIRECTORY libcaf_test/caf/ DESTINATION include/caf
+install(DIRECTORY libcaf_test/caf/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/caf
         FILES_MATCHING PATTERN "*.hpp")
 
 # process cmake_uninstall.cmake.in
@@ -638,11 +657,6 @@ endif()
 message(STATUS "Set release version for all documentation to ${CAF_RELEASE}.")
 
 # -- Setup for building manual and API documentation ---------------------------
-
-# we need the examples and some headers relative to the build/doc/tex directory
-file(COPY examples/ DESTINATION examples)
-file(COPY libcaf_core/caf/exit_reason.hpp DESTINATION libcaf_core/caf/)
-file(COPY libcaf_core/caf/sec.hpp DESTINATION libcaf_core/caf/)
 
 add_subdirectory(doc)
 
