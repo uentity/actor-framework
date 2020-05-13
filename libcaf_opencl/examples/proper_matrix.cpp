@@ -27,9 +27,25 @@
 
 #include "caf/opencl/all.hpp"
 
-using namespace std;
+template <size_t Size>
+class square_matrix;
+
+constexpr size_t matrix_size = 8;
+
+CAF_BEGIN_TYPE_ID_BLOCK(proper_matrix, first_custom_type_id)
+
+  CAF_ADD_TYPE_ID(proper_matrix, (square_matrix<matrix_size>) )
+  CAF_ADD_TYPE_ID(proper_matrix, (std::vector<float>) )
+
+CAF_END_TYPE_ID_BLOCK(proper_matrix)
+
 using namespace caf;
 using namespace caf::opencl;
+
+using std::cout;
+using std::endl;
+using std::string;
+using std::vector;
 
 using caf::detail::limited_vector;
 
@@ -37,7 +53,6 @@ namespace {
 
 using fvec = vector<float>;
 
-constexpr size_t matrix_size = 8;
 constexpr const char* kernel_name = "matrix_mult";
 
 // opencl kernel, multiplies matrix1 and matrix2
@@ -111,11 +126,12 @@ private:
 
 template<size_t Size>
 string to_string(const square_matrix<Size>& m) {
-  ostringstream oss;
+  std::ostringstream oss;
   oss.fill(' ');
   for (size_t row = 0; row < Size; ++row) {
     for (size_t column = 0; column < Size; ++column)
-      oss << fixed << setprecision(2) << setw(9) << m(column, row);
+      oss << std::fixed << std::setprecision(2) << std::setw(9)
+          << m(column, row);
     oss << '\n';
   }
   return oss.str();
@@ -181,20 +197,17 @@ void multiplier(event_based_actor* self) {
 
   // send both matrices to the actor and
   // wait for results in form of a matrix_type
-  self->request(worker, chrono::seconds(5), move(m1), move(m2)).then(
-    [](const matrix_type& result) {
+  self->request(worker, std::chrono::seconds(5), std::move(m1), std::move(m2))
+    .then([](const matrix_type& result) {
       cout << "result:" << endl << to_string(result);
-    }
-  );
+    });
 }
 
 int main() {
   // matrix_type ist not a simple type,
   // it must be annouced to libcaf
   actor_system_config cfg;
-  cfg.load<opencl::manager>()
-    .add_message_type<fvec>("float_vector")
-    .add_message_type<matrix_type>("square_matrix");
+  cfg.load<opencl::manager>().add_message_types<id_block::proper_matrix>();
   actor_system system{cfg};
   system.spawn(multiplier);
   system.await_all_actors_done();

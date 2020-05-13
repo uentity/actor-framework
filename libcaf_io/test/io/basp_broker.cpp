@@ -286,7 +286,7 @@ public:
                default_operation_data, any_vals,
                static_cast<uint64_t>(spawn_serv_atom),
                std::vector<strong_actor_ptr>{},
-               make_message(sys_atom::value, get_atom::value, "info"));
+               make_message(sys_atom_v, get_atom_v, "info"));
     // test whether basp instance correctly updates the
     // routing table upon receiving client handshakes
     auto path = tbl().lookup(n.id);
@@ -439,8 +439,8 @@ public:
     using sig_t = std::set<std::string>;
     scoped_actor tmp{sys};
     sig_t sigs;
-    tmp->send(mma, publish_atom::value, port,
-              actor_cast<strong_actor_ptr>(whom), std::move(sigs), "", false);
+    tmp->send(mma, publish_atom_v, port, actor_cast<strong_actor_ptr>(whom),
+              std::move(sigs), "", false);
     expect((atom_value, uint16_t, strong_actor_ptr, sig_t, std::string, bool),
            from(tmp).to(mma));
     expect((uint16_t), from(mma).to(tmp).with(port));
@@ -501,7 +501,7 @@ CAF_TEST(remote_address_and_port) {
   connect_node(mars());
   auto mm = sys.middleman().actor_handle();
   CAF_MESSAGE("ask MM about node ID of Mars");
-  self()->send(mm, get_atom::value, mars().id);
+  self()->send(mm, get_atom_v, mars().id);
   do {
     mpx()->exec_runnable();
   } while (self()->mailbox().empty());
@@ -575,8 +575,7 @@ CAF_TEST(remote_actor_and_send) {
   CAF_REQUIRE(mpx()->has_pending_scribe(lo, 4242));
   auto mm1 = sys.middleman().actor_handle();
   actor result;
-  auto f = self()->request(mm1, infinite, connect_atom::value, lo,
-                           uint16_t{4242});
+  auto f = self()->request(mm1, infinite, connect_atom_v, lo, uint16_t{4242});
   // wait until BASP broker has received and processed the connect message
   while (!aut()->valid(jupiter().connection))
     mpx()->exec_runnable();
@@ -592,12 +591,15 @@ CAF_TEST(remote_actor_and_send) {
     .receive(jupiter().connection, basp::message_type::client_handshake,
              no_flags, any_vals, no_operation_data, invalid_actor_id,
              invalid_actor_id, this_node())
+    .receive(jupiter().connection, basp::message_type::client_handshake,
+             basp::header::select_connection_flag, any_vals, no_operation_data,
+             invalid_actor_id, invalid_actor_id, this_node())
     .receive(jupiter().connection, basp::message_type::direct_message,
              basp::header::named_receiver_flag, any_vals,
              default_operation_data, any_vals,
              static_cast<uint64_t>(spawn_serv_atom),
              std::vector<strong_actor_ptr>{},
-             make_message(sys_atom::value, get_atom::value, "info"))
+             make_message(sys_atom_v, get_atom_v, "info"))
     .receive(jupiter().connection, basp::message_type::monitor_message,
              no_flags, any_vals, no_operation_data, invalid_actor_id,
              jupiter().dummy_actor->id(), this_node(), jupiter().id);
@@ -637,6 +639,143 @@ CAF_TEST(remote_actor_and_send) {
     CAF_CHECK_EQUAL(self()->current_sender(), result.address());
     CAF_CHECK_EQUAL(str, "hi there!");
   });
+}
+
+CAF_TEST(BASP clients select which connection to use) {
+  CAF_MESSAGE("publish an actor at ports 4001 and 4002");
+  auto hdl1 = accept_handle::from_int(4001);
+  mpx()->provide_acceptor(4001, hdl1);
+  CAF_REQUIRE_EQUAL(sys.middleman().publish(self(), 4001), 4001);
+  auto hdl2 = accept_handle::from_int(4002);
+  mpx()->provide_acceptor(4002, hdl2);
+  CAF_REQUIRE_EQUAL(sys.middleman().publish(self(), 4002), 4002);
+  mpx()->flush_runnables(); // process publish message in basp_broker
+  auto mm = sys.middleman().actor_handle();
+  CAF_MESSAGE("connect Jupiter to both ports");
+  auto conn1 = jupiter().connection;
+  auto conn2 = connection_handle::from_int(4002);
+  mpx()->add_pending_connect(hdl1, conn1);
+  mpx()->add_pending_connect(hdl2, conn2);
+  mpx()->accept_connection(hdl1);
+  mpx()->accept_connection(hdl2);
+  CAF_MESSAGE("BASP one server handshakes for each incoming connection");
+  auto published_actor_id = self()->id();
+  std::set<std::string> published_actor_ifs;
+  mock().receive(conn1, basp::message_type::server_handshake, no_flags,
+                 any_vals, basp::version, invalid_actor_id, invalid_actor_id,
+                 this_node(), defaults::middleman::app_identifiers,
+                 published_actor_id, published_actor_ifs);
+  mock().receive(conn2, basp::message_type::server_handshake, no_flags,
+                 any_vals, basp::version, invalid_actor_id, invalid_actor_id,
+                 this_node(), defaults::middleman::app_identifiers,
+                 published_actor_id, published_actor_ifs);
+  CAF_MESSAGE("After receiving the client handshakes, BASP has two routes");
+  mock(conn1,
+       {basp::message_type::client_handshake, 0, 0, 0, invalid_actor_id,
+        invalid_actor_id},
+       jupiter().id);
+  mock(conn2,
+       {basp::message_type::client_handshake, 0, 0, 0, invalid_actor_id,
+        invalid_actor_id},
+       jupiter().id);
+  CAF_CHECK_EQUAL(tbl().lookup_direct(jupiter().id), conn1);
+  CAF_CHECK_EQUAL(tbl().lookup_direct(conn1), jupiter().id);
+  CAF_CHECK_EQUAL(tbl().lookup_direct(conn2), jupiter().id);
+  CAF_MESSAGE("BASP creates proxies for remote actors");
+  auto msg = make_message("hello world");
+  mock(conn2,
+       {basp::message_type::direct_message, 0, 0, 0, 31337, self()->id()},
+       std::vector<strong_actor_ptr>{}, msg);
+  self()->receive([&](const std::string& hello) {
+    auto& sender = self()->current_sender();
+    CAF_CHECK_EQUAL(sender->id(), 31337u);
+    CAF_CHECK_EQUAL(sender->node(), jupiter().id);
+    CAF_CHECK_EQUAL(hello, "hello world");
+  });
+  CAF_REQUIRE_EQUAL(proxies().count_proxies(jupiter().id), 1u);
+  CAF_REQUIRE_NOT_EQUAL(proxies().get(jupiter().id, 31337), nullptr);
+  CAF_MESSAGE("Receiving select_connection_flag changes the routing table");
+  mock(conn2,
+       {basp::message_type::client_handshake,
+        basp::header::select_connection_flag, 0, 0, invalid_actor_id,
+        invalid_actor_id},
+       jupiter().id);
+  CAF_CHECK_EQUAL(tbl().lookup_direct(jupiter().id), conn2);
+  CAF_CHECK_EQUAL(tbl().lookup_direct(conn1), jupiter().id);
+  CAF_CHECK_EQUAL(tbl().lookup_direct(conn2), jupiter().id);
+  CAF_MESSAGE("Dropping one connection does not affect existing proxies");
+  anon_send(sys.middleman().named_broker<basp_broker>(basp_atom),
+            connection_closed_msg{conn1});
+  while (mpx()->try_exec_runnable())
+    ; // repeat
+  CAF_CHECK_EQUAL(proxies().count_proxies(jupiter().id), 1u);
+  CAF_CHECK_NOT_EQUAL(proxies().get(jupiter().id, 31337), nullptr);
+}
+
+CAF_TEST(BASP falls back to alternative routes) {
+  // TODO: mostly same as the test above, doctest-style SUBCASE macros could
+  //       elminate the copy & paste here.
+  CAF_MESSAGE("publish an actor at ports 4001 and 4002");
+  auto hdl1 = accept_handle::from_int(4001);
+  mpx()->provide_acceptor(4001, hdl1);
+  CAF_REQUIRE_EQUAL(sys.middleman().publish(self(), 4001), 4001);
+  auto hdl2 = accept_handle::from_int(4002);
+  mpx()->provide_acceptor(4002, hdl2);
+  CAF_REQUIRE_EQUAL(sys.middleman().publish(self(), 4002), 4002);
+  mpx()->flush_runnables(); // process publish message in basp_broker
+  auto mm = sys.middleman().actor_handle();
+  CAF_MESSAGE("connect Jupiter to both ports");
+  auto conn1 = jupiter().connection;
+  auto conn2 = connection_handle::from_int(4002);
+  mpx()->add_pending_connect(hdl1, conn1);
+  mpx()->add_pending_connect(hdl2, conn2);
+  mpx()->accept_connection(hdl1);
+  mpx()->accept_connection(hdl2);
+  CAF_MESSAGE("BASP one server handshakes for each incoming connection");
+  auto published_actor_id = self()->id();
+  std::set<std::string> published_actor_ifs;
+  mock().receive(conn1, basp::message_type::server_handshake, no_flags,
+                 any_vals, basp::version, invalid_actor_id, invalid_actor_id,
+                 this_node(), defaults::middleman::app_identifiers,
+                 published_actor_id, published_actor_ifs);
+  mock().receive(conn2, basp::message_type::server_handshake, no_flags,
+                 any_vals, basp::version, invalid_actor_id, invalid_actor_id,
+                 this_node(), defaults::middleman::app_identifiers,
+                 published_actor_id, published_actor_ifs);
+  CAF_MESSAGE("After receiving the client handshakes, BASP has two routes");
+  mock(conn1,
+       {basp::message_type::client_handshake, 0, 0, 0, invalid_actor_id,
+        invalid_actor_id},
+       jupiter().id);
+  mock(conn2,
+       {basp::message_type::client_handshake, 0, 0, 0, invalid_actor_id,
+        invalid_actor_id},
+       jupiter().id);
+  CAF_CHECK_EQUAL(tbl().lookup_direct(jupiter().id), conn1);
+  CAF_CHECK_EQUAL(tbl().lookup_direct(conn1), jupiter().id);
+  CAF_CHECK_EQUAL(tbl().lookup_direct(conn2), jupiter().id);
+  CAF_MESSAGE("BASP creates proxies for remote actors");
+  auto msg = make_message("hello world");
+  mock(conn2,
+       {basp::message_type::direct_message, 0, 0, 0, 31337, self()->id()},
+       std::vector<strong_actor_ptr>{}, msg);
+  self()->receive([&](const std::string& hello) {
+    auto& sender = self()->current_sender();
+    CAF_CHECK_EQUAL(sender->id(), 31337u);
+    CAF_CHECK_EQUAL(sender->node(), jupiter().id);
+    CAF_CHECK_EQUAL(hello, "hello world");
+  });
+  CAF_REQUIRE_EQUAL(proxies().count_proxies(jupiter().id), 1u);
+  CAF_REQUIRE_NOT_EQUAL(proxies().get(jupiter().id, 31337), nullptr);
+  CAF_MESSAGE("Dropping the main connection falls back to the alternative");
+  anon_send(sys.middleman().named_broker<basp_broker>(basp_atom),
+            connection_closed_msg{conn1});
+  while (mpx()->try_exec_runnable())
+    ; // repeat
+  CAF_CHECK_EQUAL(tbl().lookup_direct(jupiter().id), conn2);
+  CAF_CHECK_EQUAL(tbl().lookup_direct(conn2), jupiter().id);
+  CAF_CHECK_EQUAL(proxies().count_proxies(jupiter().id), 1u);
+  CAF_CHECK_NOT_EQUAL(proxies().get(jupiter().id, 31337), nullptr);
 }
 
 CAF_TEST(actor_serialize_and_deserialize) {
@@ -694,7 +833,7 @@ CAF_TEST(indirect_connections) {
              default_operation_data, any_vals,
              static_cast<uint64_t>(spawn_serv_atom), this_node(), jupiter().id,
              std::vector<strong_actor_ptr>{},
-             make_message(sys_atom::value, get_atom::value, "info"));
+             make_message(sys_atom_v, get_atom_v, "info"));
   CAF_MESSAGE("expect announce_proxy message at Mars from Earth to Jupiter");
   mx.receive(mars().connection, basp::message_type::monitor_message, no_flags,
              any_vals, no_operation_data, invalid_actor_id,
@@ -746,14 +885,14 @@ CAF_TEST(automatic_connection) {
              default_operation_data, any_vals,
              static_cast<uint64_t>(spawn_serv_atom), this_node(), jupiter().id,
              std::vector<strong_actor_ptr>{},
-             make_message(sys_atom::value, get_atom::value, "info"))
+             make_message(sys_atom_v, get_atom_v, "info"))
     .receive(mars().connection, basp::message_type::routed_message,
              basp::header::named_receiver_flag, any_vals,
              default_operation_data,
              any_vals, // actor ID of an actor spawned by the BASP broker
              static_cast<uint64_t>(config_serv_atom), this_node(), jupiter().id,
              std::vector<strong_actor_ptr>{},
-             make_message(get_atom::value, "basp.default-connectivity-tcp"))
+             make_message(get_atom_v, "basp.default-connectivity-tcp"))
     .receive(mars().connection, basp::message_type::monitor_message, no_flags,
              any_vals, no_operation_data, invalid_actor_id,
              jupiter().dummy_actor->id(), this_node(), jupiter().id);
@@ -788,7 +927,10 @@ CAF_TEST(automatic_connection) {
        jupiter().dummy_actor->id(), std::set<std::string>{})
     .receive(jupiter().connection, basp::message_type::client_handshake,
              no_flags, any_vals, no_operation_data, invalid_actor_id,
-             invalid_actor_id, this_node());
+             invalid_actor_id, this_node())
+    .receive(jupiter().connection, basp::message_type::client_handshake,
+             basp::header::select_connection_flag, any_vals, no_operation_data,
+             invalid_actor_id, invalid_actor_id, this_node());
   CAF_CHECK_EQUAL(tbl().lookup_indirect(jupiter().id), none);
   CAF_CHECK_EQUAL(tbl().lookup_indirect(mars().id), none);
   check_node_in_tbl(jupiter());

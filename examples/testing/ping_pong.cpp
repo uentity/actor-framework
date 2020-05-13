@@ -1,5 +1,3 @@
-// Manual refs: lines 12-65 (Testing)
-
 #define CAF_SUITE ping_pong
 
 #include "caf/test/dsl.hpp"
@@ -9,26 +7,22 @@
 
 using namespace caf;
 
+// --(rst-ping-pong-begin)--
 namespace {
 
-using ping_atom = atom_constant<atom("ping")>;
-using pong_atom = atom_constant<atom("pong")>;
-
 behavior ping(event_based_actor* self, actor pong_actor, int n) {
-  self->send(pong_actor, ping_atom::value, n);
+  self->send(pong_actor, ping_atom_v, n);
   return {
     [=](pong_atom, int x) {
       if (x > 1)
-        self->send(pong_actor, ping_atom::value, x - 1);
-    }
+        self->send(pong_actor, ping_atom_v, x - 1);
+    },
   };
 }
 
 behavior pong() {
   return {
-    [=](ping_atom, int x) {
-      return std::make_tuple(pong_atom::value, x);
-    }
+    [=](ping_atom, int x) { return make_result(pong_atom_v, x); },
   };
 }
 
@@ -63,3 +57,4 @@ CAF_TEST(three pings) {
 }
 
 CAF_TEST_FIXTURE_SCOPE_END()
+// --(rst-ping-pong-end)--

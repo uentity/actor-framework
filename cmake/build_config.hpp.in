@@ -32,3 +32,5 @@
 #cmakedefine CAF_NO_EXCEPTIONS
 
 #cmakedefine CAF_ENABLE_ACTOR_PROFILER
+
+#cmakedefine CAF_ENABLE_TYPE_ID_CHECKS

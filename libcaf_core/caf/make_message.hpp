@@ -22,11 +22,13 @@
 #include <sstream>
 #include <type_traits>
 
-#include "caf/message.hpp"
 #include "caf/allowed_unsafe_message_type.hpp"
-
+#include "caf/detail/build_config.hpp"
+#include "caf/detail/is_complete.hpp"
 #include "caf/detail/tuple_vals.hpp"
 #include "caf/detail/type_traits.hpp"
+#include "caf/message.hpp"
+#include "caf/type_id.hpp"
 
 namespace caf {
 
@@ -52,7 +54,7 @@ struct unbox_message_element<actor_control_block*, 0> {
   using type = strong_actor_ptr;
 };
 
-///
+/// @private
 template <class T>
 struct is_serializable_or_whitelisted {
   static constexpr bool value = detail::is_serializable<T>::value
@@ -86,6 +88,12 @@ make_message(T&& x, Ts&&... xs) {
                 "you can whitelist individual types by "
                 "specializing `caf::allowed_unsafe_message_type<T>` "
                 "or using the macro CAF_ALLOW_UNSAFE_MESSAGE_TYPE");
+#ifdef CAF_ENABLE_TYPE_ID_CHECKS
+  static_assert(tl_forall<stored_types, has_type_id>::value,
+                "at least one type has no type ID: please assign type IDs "
+                "to all of your types via CAF_ADD_TYPE_ID (this check was "
+                "enabled via CAF_ENABLE_TYPE_ID_CHECKS)");
+#endif
   using storage = typename tl_apply<stored_types, tuple_vals>::type;
   auto ptr = make_counted<storage>(std::forward<T>(x), std::forward<Ts>(xs)...);
   return message{detail::message_data::cow_ptr{std::move(ptr)}};
@@ -118,4 +126,3 @@ message make_message_from_tuple(std::tuple<Ts...> xs) {
 }
 
 } // namespace caf
-

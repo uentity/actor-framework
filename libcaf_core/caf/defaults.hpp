@@ -65,7 +65,6 @@ extern CAF_API const timespan relaxed_sleep_duration;
 
 namespace logger {
 
-extern CAF_API string_view component_filter;
 extern CAF_API const atom_value console;
 extern CAF_API string_view console_format;
 extern CAF_API const atom_value console_verbosity;
@@ -80,7 +79,8 @@ namespace middleman {
 extern CAF_API std::vector<std::string> app_identifiers;
 extern CAF_API const atom_value network_backend;
 extern CAF_API const size_t max_consecutive_reads;
-extern CAF_API const size_t heartbeat_interval;
+extern CAF_API const timespan heartbeat_interval;
+extern CAF_API const timespan connection_timeout;
 extern CAF_API const size_t cached_udp_buffers;
 extern CAF_API const size_t max_pending_msgs;
 extern CAF_API const size_t workers;

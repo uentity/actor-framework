@@ -7,6 +7,7 @@ defaultReleaseBuildFlags = [
     'CAF_ENABLE_RUNTIME_CHECKS:BOOL=yes',
     'CAF_NO_OPENCL:BOOL=yes',
     'CAF_INSTALL_UNIT_TESTS:BOOL=yes',
+    'CAF_ENABLE_TYPE_ID_CHECKS:BOOL=yes',
 ]
 
 // Default CMake flags for debug builds.
@@ -14,6 +15,7 @@ defaultDebugBuildFlags = defaultReleaseBuildFlags + [
     'CAF_ENABLE_ADDRESS_SANITIZER:BOOL=yes',
     'CAF_LOG_LEVEL:STRING=TRACE',
     'CAF_ENABLE_ACTOR_PROFILER:BOOL=yes',
+    'CAF_ENABLE_TYPE_ID_CHECKS:BOOL=yes',
 ]
 
 // Configures the behavior of our stages.
@@ -25,7 +27,6 @@ config = [
         'build',
         'style',
         'tests',
-        'coverage',
     ],
     // Our build matrix. Keys are the operating system labels and values are build configurations.
     buildMatrix: [
@@ -36,7 +37,11 @@ config = [
         ['Linux', [
             builds: ['debug'],
             tools: ['gcc8'],
-            extraSteps: ['coverageReport'],
+        ]],
+        ['Linux', [
+            builds: ['debug'],
+            tools: ['gcc8'],
+            extraFlags: ['EXTRA_FLAGS=-std=c++17']
         ]],
         ['Linux', [
             builds: ['release'],
@@ -85,20 +90,6 @@ config = [
             release: defaultReleaseBuildFlags + [
                 'CAF_BUILD_STATIC_ONLY:BOOL=yes',
             ],
-        ],
-    ],
-    // Configures what binary the coverage report uses and what paths to exclude.
-    coverage: [
-        binary: 'build/bin/caf-test',
-        relativeExcludePaths: [
-            'examples',
-            'tools',
-            'libcaf_test',
-            'libcaf_core/test',
-            'libcaf_io/test',
-            'libcaf_openssl/test',
-            'libcaf_opencl',
-            'libcaf_core/caf/scheduler/profiled_coordinator.hpp',
         ],
     ],
 ]
@@ -152,54 +143,35 @@ pipeline {
                 buildParallel(config, PrettyJobBaseName)
             }
         }
-        stage('Documentation') {
-            agent { label 'pandoc' }
-            steps {
-                deleteDir()
-                unstash('sources')
-                dir('sources') {
-                    // Configure and build.
-                    cmakeBuild([
-                        buildDir: 'build',
-                        installation: 'cmake in search path',
-                        sourceDir: '.',
-                        cmakeArgs: '-DCAF_BUILD_TEX_MANUAL=yes',
-                        steps: [[
-                            args: '--target doc',
-                            withCmake: true,
-                        ]],
-                    ])
-                    sshagent(['84d71a75-cbb6-489a-8f4c-d0e2793201e9']) {
-                        sh """
-                            if [ "${env.GIT_BRANCH}" = "master" ]; then
-                                rsync -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" -r -z --delete build/doc/html/ www.inet.haw-hamburg.de:/users/www/www.actor-framework.org/html/doc
-                                scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null build/doc/manual.pdf www.inet.haw-hamburg.de:/users/www/www.actor-framework.org/html/pdf/manual.pdf
-                            fi
-                        """
-                    }
-                }
-                dir('read-the-docs') {
-                    git([
-                        credentialsId: '9b054212-9bb4-41fd-ad8e-b7d47495303f',
-                        url: 'git@github.com:actor-framework/read-the-docs.git',
-                    ])
-                    sh """
-                        if [ "${env.GIT_BRANCH}" = "master" ]; then
-                            cp ../sources/build/doc/rst/* .
-                            if [ -n "\$(git status --porcelain)" ]; then
-                                git add .
-                                git commit -m "Update Manual"
-                                git push --set-upstream origin master
-                                if [ -z "\$(grep 'exp.sha' ../sources/release.txt)" ] ; then
-                                    git tag \$(cat ../sources/release.txt)
-                                    git push origin \$(cat ../sources/release.txt)
-                                fi
-                            fi
-                        fi
-                    """
-                }
-            }
-        }
+        // TODO: generate PDF from reStructuredText
+        // stage('Documentation') {
+        //     agent { label 'pandoc' }
+        //     steps {
+        //         deleteDir()
+        //         unstash('sources')
+        //         dir('sources') {
+        //             // Configure and build.
+        //             cmakeBuild([
+        //                 buildDir: 'build',
+        //                 installation: 'cmake in search path',
+        //                 sourceDir: '.',
+        //                 cmakeArgs: '-DCAF_BUILD_TEX_MANUAL=yes',
+        //                 steps: [[
+        //                     args: '--target doc',
+        //                     withCmake: true,
+        //                 ]],
+        //             ])
+        //             sshagent(['84d71a75-cbb6-489a-8f4c-d0e2793201e9']) {
+        //                 sh """
+        //                     if [ "${env.GIT_BRANCH}" = "master" ]; then
+        //                         rsync -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" -r -z --delete build/doc/html/ www.inet.haw-hamburg.de:/users/www/www.actor-framework.org/html/doc
+        //                         scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null build/doc/manual.pdf www.inet.haw-hamburg.de:/users/www/www.actor-framework.org/html/pdf/manual.pdf
+        //                     fi
+        //                 """
+        //             }
+        //         }
+        //     }
+        // }
         stage('Notify') {
             steps {
                 collectResults(config, PrettyJobName)

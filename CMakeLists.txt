@@ -1,8 +1,5 @@
 cmake_minimum_required(VERSION 3.4.0)
-project(caf C CXX)
-
-include(CheckCSourceCompiles)
-include(CheckCSourceRuns)
+project(caf CXX)
 
 # Set default install paths.
 # See https://cmake.org/cmake/help/latest/module/GNUInstallDirs.html
@@ -230,8 +227,7 @@ endif()
 #                                compiler setup                                #
 ################################################################################
 
-# leave compiler flags alone when building as subdirectory
-
+# leave most compiler flags alone when building as subdirectory
 if (NOT caf_is_subproject)
   # check for g++ >= 4.8 or clang++ > = 3.2
   if(NOT WIN32 AND NOT CAF_NO_COMPILER_CHECK AND NOT CMAKE_CROSSCOMPILING)
@@ -379,19 +375,6 @@ if (NOT caf_is_subproject)
   if(NOT APPLE AND NOT WIN32)
       build_string("EXTRA_FLAGS" "-pthread")
   endif()
-  # -fPIC generates warnings on MinGW and Cygwin plus extra setup steps needed on MinGW
-  if(MINGW)
-    add_definitions(-D_WIN32_WINNT=0x0600)
-    add_definitions(-DWIN32)
-    include(GenerateExportHeader)
-    list(APPEND CAF_EXTRA_LDFLAGS -lws2_32 -liphlpapi -lpsapi)
-    # build static to avoid runtime dependencies to GCC libraries
-    build_string("EXTRA_FLAGS" "-static")
-  elseif(CYGWIN)
-    build_string("EXTRA_FLAGS" "-U__STRICT_ANSI__")
-  else()
-    build_string("EXTRA_FLAGS" "-fPIC")
-  endif()
   if (WIN32)
     list(APPEND CAF_EXTRA_LDFLAGS ws2_32 iphlpapi)
   endif()
@@ -410,9 +393,9 @@ if (NOT caf_is_subproject)
   endif()
   # check if the user provided CXXFLAGS, set defaults otherwise
   if(NOT CMAKE_CXX_FLAGS)
-    set(CMAKE_CXX_FLAGS                   "-std=c++11 -Wextra -Wall -pedantic ${EXTRA_FLAGS}")
+    set(CMAKE_CXX_FLAGS                   "-std=c++11 -Wextra -Wall -pedantic")
   endif()
-  if (NOT "${CMAKE_CXX_FLAGS}" MATCHES "-std=")
+  if (NOT MSVC AND NOT "${CMAKE_CXX_FLAGS}" MATCHES "-std=")
     message(STATUS "Supplied CXXFLAGS do not contain a C++ standard, setting std to c++11")
     set(CMAKE_CXX_FLAGS                   "-std=c++11 ${CMAKE_CXX_FLAGS}")
   endif()
@@ -432,10 +415,32 @@ if (NOT caf_is_subproject)
   if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE RelWithDebInfo)
   endif()
-  # needed by subprojects
-  if (DEFINED CMAKE_LD_LIBS)
-    list(APPEND ${CMAKE_LD_LIBS})
-  endif()
+endif()
+
+# Make sure to link to platform-specific threading dependency (e.g. pthread).
+if (NOT TARGET Threads::Threads)
+  find_package(Threads REQUIRED)
+endif ()
+list(APPEND CAF_EXTRA_LDFLAGS Threads::Threads)
+
+# Have CMake set -fPIC when necessary.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# Adjust setup for MinGW and Cygwin.
+if(MINGW)
+  add_definitions(-D_WIN32_WINNT=0x0600)
+  add_definitions(-DWIN32)
+  include(GenerateExportHeader)
+  list(APPEND CAF_EXTRA_LDFLAGS -lws2_32 -liphlpapi -lpsapi)
+  # Build static to avoid runtime dependencies to GCC libraries.
+  build_string("EXTRA_FLAGS" "-static")
+elseif(CYGWIN)
+  build_string("EXTRA_FLAGS" "-U__STRICT_ANSI__")
+endif()
+
+# Add extra flags.
+if (NOT "${EXTRA_FLAGS}" STREQUAL "")
+  build_string(CMAKE_CXX_FLAGS "${EXTRA_FLAGS}")
 endif()
 
 ################################################################################
@@ -471,10 +476,12 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
 if(NOT TARGET uninstall)
   add_custom_target(uninstall)
 endif()
-add_custom_command(TARGET uninstall
+add_custom_target(caf_uninstall)
+add_custom_command(TARGET caf_uninstall
                    PRE_BUILD
                    COMMAND "${CMAKE_COMMAND}" -P
                    "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake")
+add_dependencies(uninstall caf_uninstall)
 
 ################################################################################
 #                       set inclue paths for subprojects                       #
@@ -506,10 +513,22 @@ endif()
 # all projects need the headers of the core components
 include_directories("${CAF_INCLUDE_DIRS}")
 
+# -- unit tests setup ----------------------------------------------------------
 
-################################################################################
-#                                 add targets                                  #
-################################################################################
+if(NOT CAF_NO_UNIT_TESTS)
+  enable_testing()
+  function(caf_add_test_suites target)
+    foreach(suiteName ${ARGN})
+      string(REPLACE "." "/" suitePath ${suiteName})
+      target_sources(${target} PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/${suitePath}.cpp")
+      add_test(NAME ${suiteName}
+               COMMAND ${target} -r300 -n -v5 -s"^${suiteName}$")
+    endforeach()
+  endfunction()
+endif()
+
+# -- add targets ---------------------------------------------------------------
 
 macro(add_caf_lib name)
   string(TOUPPER ${name} upper_name)
@@ -595,21 +614,18 @@ elseif(NOT CAF_NO_OPENSSL)
     else()
       if(NOT CMAKE_CROSSCOMPILING)
         # Check if openssl headers and library versions match
-        set(CMAKE_REQUIRED_LIBRARIES ${OPENSSL_LIBRARIES})
-        set(CMAKE_REQUIRED_INCLUDES ${OPENSSL_INCLUDE_DIR})
-        check_c_source_runs("
-          #include <openssl/opensslv.h>
-          #include <openssl/crypto.h>
-          int main() {
-            if (SSLeay() == OPENSSL_VERSION_NUMBER) {
-              return 0;
-            }
-            return -1;
-          }
-        " OPENSSL_CORRECT_VERSION_NUMBER)
-        if (NOT OPENSSL_CORRECT_VERSION_NUMBER)
+        try_run(sslRunResult sslCompileResult
+                "${CMAKE_CURRENT_BINARY_DIR}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/cmake/openssl-check.cpp"
+                CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${OPENSSL_INCLUDE_DIR}"
+                LINK_LIBRARIES ${OPENSSL_LIBRARIES}
+                OUTPUT_VARIABLE sslOutput)
+        if (NOT sslCompileResult)
+          message(FATAL_ERROR "failed to compile/link against OpenSSL")
+        endif()
+        if(NOT sslRunResult EQUAL 0)
           message(FATAL_ERROR
-            "OpenSSL library version does not match headers")
+                  "OpenSSL version does not match headers: ${sslOutput}")
         endif()
       endif()
       include_directories(BEFORE ${OPENSSL_INCLUDE_DIR})
@@ -648,48 +664,6 @@ add_optional_caf_binaries(examples)
 # build tools if not being told otherwise
 add_optional_caf_binaries(tools)
 
-################################################################################
-#                               unit tests setup                               #
-################################################################################
-
-if(NOT CAF_NO_UNIT_TESTS)
-  # setup unit test binary
-  add_executable(caf-test
-                 libcaf_test/src/caf-test.cpp
-                 libcaf_test/caf/test/unit_test.hpp
-                 libcaf_test/caf/test/unit_test_impl.hpp
-                 ${CAF_ALL_UNIT_TESTS})
-  target_link_libraries(caf-test
-                        ${CAF_EXTRA_LDFLAGS}
-                        ${CAF_LIBRARIES}
-                        ${PTHREAD_LIBRARIES})
-  add_custom_target(all_unit_tests)
-  add_dependencies(caf-test all_unit_tests)
-  # enumerate all test suites.
-  foreach(test ${CAF_ALL_UNIT_TESTS})
-    file(STRINGS ${test} contents)
-    foreach(line ${contents})
-      if ("${line}" MATCHES "CAF_SUITE (.*)")
-        string(REGEX REPLACE ".* CAF_SUITE (.*)" "\\1" suite ${line})
-        list(APPEND suites ${suite})
-      endif()
-    endforeach()
-  endforeach()
-  list(REMOVE_DUPLICATES suites)
-  # creates one CMake test per test suite.
-  macro (make_test suite)
-    string(REPLACE " " "_" test_name ${suite})
-    set(caf_test ${EXECUTABLE_OUTPUT_PATH}/caf-test)
-    add_test(${test_name} ${caf_test} -r 300 -n -v 5 -s "${suite}" ${ARGN})
-  endmacro ()
-  list(LENGTH suites num_suites)
-  message(STATUS "Found ${num_suites} test suites")
-  foreach(suite ${suites})
-    make_test("${suite}")
-  endforeach ()
-endif()
-
-
 # -- Setup for building manual and API documentation ---------------------------
 
 if(NOT caf_is_subproject)
@@ -706,9 +680,11 @@ endif()
 # -- Export important variables to the parent scope ----------------------------
 
 if(caf_is_subproject)
-  set(CAF_VERSION "${CAF_VERSION}" PARENT_SCOPE)
-  set(CAF_INCLUDE_DIRS "${CAF_INCLUDE_DIRS}" PARENT_SCOPE)
-  set(CAF_LIBRARIES "${CAF_LIBRARIES}" PARENT_SCOPE)
+  # Make sure parent projects can find build_config.hpp
+  list(APPEND CAF_INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/libcaf_core")
+  set(CAF_VERSION  "${CAF_VERSION}" CACHE INTERNAL "CAF release version")
+  set(CAF_LIBRARIES "${CAF_LIBRARIES}" CACHE INTERNAL "Library targets")
+  set(CAF_INCLUDE_DIRS "${CAF_INCLUDE_DIRS}" CACHE INTERNAL "Path to CAF headers")
 endif()
 
 ################################################################################

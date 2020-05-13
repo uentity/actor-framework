@@ -359,6 +359,17 @@ struct is_serializable_impl<T, false, false> {
                                 || is_builtin<T>::value;
 };
 
+template <class Rep, class Period>
+struct is_serializable_impl<std::chrono::duration<Rep, Period>, false, false> {
+  static constexpr bool value = is_serializable<Rep>::value;
+};
+
+template <class Clock, class Duration>
+struct is_serializable_impl<std::chrono::time_point<Clock, Duration>, false,
+                            false> {
+  static constexpr bool value = is_serializable<Duration>::value;
+};
+
 template <class F, class S>
 struct is_serializable_impl<std::pair<F, S>, false, false> {
   static constexpr bool value = is_serializable<F>::value
@@ -459,6 +470,23 @@ struct callable_trait<R (C::*)(Ts...)> : callable_trait<R (Ts...)> {};
 // good ol' function pointer
 template <class R, class... Ts>
 struct callable_trait<R (*)(Ts...)> : callable_trait<R (Ts...)> {};
+
+#if __cplusplus >= 201703L
+
+// member const function pointer
+template <class C, typename R, class... Ts>
+struct callable_trait<R (C::*)(Ts...) const noexcept>
+  : callable_trait<R(Ts...)> {};
+
+// member function pointer
+template <class C, typename R, class... Ts>
+struct callable_trait<R (C::*)(Ts...) noexcept> : callable_trait<R(Ts...)> {};
+
+// good ol' function pointer
+template <class R, class... Ts>
+struct callable_trait<R (*)(Ts...) noexcept> : callable_trait<R(Ts...)> {};
+
+#endif
 
 template <class T>
 struct has_apply_operator {
@@ -610,6 +638,7 @@ public:
 
 CAF_HAS_MEMBER_TRAIT(size);
 CAF_HAS_MEMBER_TRAIT(data);
+CAF_HAS_MEMBER_TRAIT(clear);
 
 /// Checks whether F is convertible to either `std::function<void (T&)>`
 /// or `std::function<void (const T&)>`.

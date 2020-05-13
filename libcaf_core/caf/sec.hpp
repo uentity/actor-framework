@@ -16,10 +16,6 @@
  * http://www.boost.org/LICENSE_1_0.txt.                                      *
  ******************************************************************************/
 
-// This file is partially included in the manual, do not modify
-// without updating the references in the *.tex files!
-// Manual references: lines 32-117 (Error.tex)
-
 #pragma once
 
 #include "caf/error.hpp"
@@ -27,6 +23,7 @@
 
 namespace caf {
 
+// --(rst-sec-begin)--
 /// SEC stands for "System Error Code". This enum contains error codes for
 /// ::actor_system and its modules.
 enum class sec : uint8_t {
@@ -132,12 +129,15 @@ enum class sec : uint8_t {
   malformed_basp_message,
   /// The middleman closed a connection because it failed to serialize or
   /// deserialize a payload.
-  serializing_basp_payload_failed,
+  serializing_basp_payload_failed = 50,
   /// The middleman closed a connection to itself or an already connected node.
   redundant_connection,
   /// Resolving a path on a remote node failed.
   remote_lookup_failed,
+  /// Disconnected from a BASP node after reaching the connection timeout.
+  connection_timeout,
 };
+// --(rst-sec-end)--
 
 /// @relates sec
 std::string to_string(sec);

@@ -18,9 +18,7 @@
 
 #define CAF_SUITE io.remote_spawn
 
-#include "caf/config.hpp"
-
-#include "caf/test/io_dsl.hpp"
+#include "io-test.hpp"
 
 #include <cstring>
 #include <functional>
@@ -36,17 +34,11 @@ using namespace caf;
 
 namespace {
 
-using add_atom = atom_constant<atom("add")>;
-using sub_atom = atom_constant<atom("sub")>;
-
-using calculator = typed_actor<replies_to<add_atom, int, int>::with<int>,
-                               replies_to<sub_atom, int, int>::with<int>>;
-
 // function-based, dynamically typed, event-based API
 behavior calculator_fun(event_based_actor*) {
   return {
-    [](add_atom, int a, int b) { return a + b; },
-    [](sub_atom, int a, int b) { return a - b; },
+    [](add_atom, int32_t a, int32_t b) { return a + b; },
+    [](sub_atom, int32_t a, int32_t b) { return a - b; },
   };
 }
 
@@ -58,8 +50,8 @@ public:
 
   behavior make_behavior() override {
     return {
-      [](add_atom, int a, int b) { return a + b; },
-      [](sub_atom, int a, int b) { return a - b; },
+      [](add_atom, int32_t a, int32_t b) { return a + b; },
+      [](sub_atom, int32_t a, int32_t b) { return a - b; },
     };
   }
 };
@@ -67,14 +59,15 @@ public:
 // function-based, statically typed, event-based API
 calculator::behavior_type typed_calculator_fun() {
   return {
-    [](add_atom, int a, int b) { return a + b; },
-    [](sub_atom, int a, int b) { return a - b; },
+    [](add_atom, int32_t a, int32_t b) { return a + b; },
+    [](sub_atom, int32_t a, int32_t b) { return a - b; },
   };
 }
 
 struct config : actor_system_config {
   config() {
     load<io::middleman>();
+    add_message_types<id_block::io_test>();
     add_actor_type<calculator_class>("calculator-class");
     add_actor_type("calculator", calculator_fun);
     add_actor_type("typed_calculator", typed_calculator_fun);
@@ -106,10 +99,10 @@ CAF_TEST(nodes can spawn actors remotely) {
   calc = earth.mm.remote_spawn<calculator>(nid, "typed_calculator",
                                            make_message());
   CAF_MESSAGE("remotely spawned actors respond to messages");
-  earth.self->send(*calc, add_atom::value, 10, 20);
+  earth.self->send(*calc, add_atom_v, 10, 20);
   run();
   expect_on(earth, (int), from(*calc).to(earth.self).with(30));
-  earth.self->send(*calc, sub_atom::value, 10, 20);
+  earth.self->send(*calc, sub_atom_v, 10, 20);
   run();
   expect_on(earth, (int), from(*calc).to(earth.self).with(-10));
   anon_send_exit(*calc, exit_reason::user_shutdown);
@@ -118,7 +111,7 @@ CAF_TEST(nodes can spawn actors remotely) {
   auto dyn_calc = earth.mm.remote_spawn<actor>(nid, "calculator-class",
                                                make_message());
   CAF_REQUIRE(dyn_calc);
-  earth.self->send(*dyn_calc, add_atom::value, 10, 20);
+  earth.self->send(*dyn_calc, add_atom_v, 10, 20);
   run();
   expect_on(earth, (int), from(*dyn_calc).to(earth.self).with(30));
   anon_send_exit(*dyn_calc, exit_reason::user_shutdown);

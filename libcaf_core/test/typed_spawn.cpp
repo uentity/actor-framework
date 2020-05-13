@@ -23,7 +23,7 @@
 
 #  define CAF_SUITE typed_spawn
 
-#  include "caf/test/unit_test.hpp"
+#  include "core-test.hpp"
 
 #  include "caf/string_algorithms.hpp"
 
@@ -31,11 +31,32 @@
 
 #  define ERROR_HANDLER [&](error& err) { CAF_FAIL(system.render(err)); }
 
+namespace {
+
+using server_type = caf::typed_actor<caf::replies_to<my_request>::with<bool>>;
+
+using event_testee_type
+  = caf::typed_actor<caf::replies_to<get_state_atom>::with<std::string>,
+                     caf::replies_to<std::string>::with<void>,
+                     caf::replies_to<float>::with<void>,
+                     caf::replies_to<int32_t>::with<int32_t>>;
+
+using string_actor
+  = caf::typed_actor<caf::replies_to<std::string>::with<std::string>>;
+
+using int_actor = caf::typed_actor<caf::replies_to<int32_t>::with<int32_t>>;
+
+using float_actor = caf::typed_actor<caf::reacts_to<float>>;
+
+} // namespace
+
 using std::string;
 
 using namespace caf;
 
 using passed_atom = caf::atom_constant<caf::atom("passed")>;
+
+constexpr auto passed_atom_v = passed_atom::value;
 
 namespace {
 
@@ -48,16 +69,16 @@ error make_error(mock_errc x) {
 }
 
 // check invariants of type system
-using dummy1 = typed_actor<reacts_to<int, int>,
-                           replies_to<double>::with<double>>;
+using dummy1
+  = typed_actor<reacts_to<int32_t, int32_t>, replies_to<double>::with<double>>;
 
 using dummy2 = dummy1::extend<reacts_to<ok_atom>>;
 
 static_assert(std::is_convertible<dummy2, dummy1>::value,
               "handle not assignable to narrower definition");
 
-using dummy3 = typed_actor<reacts_to<float, int>>;
-using dummy4 = typed_actor<replies_to<int>::with<double>>;
+using dummy3 = typed_actor<reacts_to<float, int32_t>>;
+using dummy4 = typed_actor<replies_to<int32_t>::with<double>>;
 using dummy5 = dummy4::extend_with<dummy3>;
 
 static_assert(std::is_convertible<dummy5, dummy3>::value,
@@ -69,18 +90,6 @@ static_assert(std::is_convertible<dummy5, dummy4>::value,
 /******************************************************************************
  *                        simple request/response test                        *
  ******************************************************************************/
-
-struct my_request {
-  int a;
-  int b;
-};
-
-template <class Inspector>
-typename Inspector::result_type inspect(Inspector& f, my_request& x) {
-  return f(x.a, x.b);
-}
-
-using server_type = typed_actor<replies_to<my_request>::with<bool>>;
 
 server_type::behavior_type typed_server1() {
   return {
@@ -110,7 +119,7 @@ void client(event_based_actor* self, const actor& parent,
     CAF_CHECK_EQUAL(val1, true);
     self->request(serv, infinite, my_request{10, 20}).then([=](bool val2) {
       CAF_CHECK_EQUAL(val2, false);
-      self->send(parent, passed_atom::value);
+      self->send(parent, passed_atom_v);
     });
   });
 }
@@ -118,12 +127,6 @@ void client(event_based_actor* self, const actor& parent,
 /******************************************************************************
  *          test skipping of messages intentionally + using become()          *
  ******************************************************************************/
-
-struct get_state_msg {};
-
-using event_testee_type = typed_actor<
-  replies_to<get_state_msg>::with<string>, replies_to<string>::with<void>,
-  replies_to<float>::with<void>, replies_to<int>::with<int>>;
 
 class event_testee : public event_testee_type::base {
 public:
@@ -133,7 +136,7 @@ public:
 
   behavior_type wait4string() {
     return {
-      [=](const get_state_msg&) { return "wait4string"; },
+      [=](get_state_atom) { return "wait4string"; },
       [=](const string&) { become(wait4int()); },
       [=](float) { return skip(); },
       [=](int) { return skip(); },
@@ -142,7 +145,7 @@ public:
 
   behavior_type wait4int() {
     return {
-      [=](const get_state_msg&) { return "wait4int"; },
+      [=](get_state_atom) { return "wait4int"; },
       [=](int) -> int {
         become(wait4float());
         return 42;
@@ -154,7 +157,7 @@ public:
 
   behavior_type wait4float() {
     return {
-      [=](const get_state_msg&) { return "wait4float"; },
+      [=](get_state_atom) { return "wait4float"; },
       [=](float) { become(wait4string()); },
       [=](const string&) { return skip(); },
       [=](int) { return skip(); },
@@ -169,8 +172,6 @@ public:
 /******************************************************************************
  *                         simple 'forwarding' chain                          *
  ******************************************************************************/
-
-using string_actor = typed_actor<replies_to<string>::with<string>>;
 
 string_actor::behavior_type string_reverter() {
   return {
@@ -193,8 +194,8 @@ string_actor::behavior_type string_delegator(string_actor::pointer self,
   };
 }
 
-using maybe_string_actor = typed_actor<
-  replies_to<string>::with<ok_atom, string>>;
+using maybe_string_actor
+  = typed_actor<replies_to<string>::with<ok_atom, string>>;
 
 maybe_string_actor::behavior_type maybe_string_reverter() {
   return {
@@ -221,10 +222,6 @@ maybe_string_delegator(maybe_string_actor::pointer self,
 /******************************************************************************
  *                        sending typed actor handles                         *
  ******************************************************************************/
-
-using int_actor = typed_actor<replies_to<int>::with<int>>;
-
-using float_actor = typed_actor<reacts_to<float>>;
 
 int_actor::behavior_type int_fun() {
   return {
@@ -286,7 +283,7 @@ struct fixture {
   scoped_actor self;
 
   static actor_system_config& init(actor_system_config& cfg) {
-    cfg.add_message_type<get_state_msg>("get_state_msg");
+    cfg.add_message_types<id_block::core_test>();
     cfg.parse(test::engine::argc(), test::engine::argv());
     return cfg;
   }
@@ -349,13 +346,13 @@ CAF_TEST(event_testee_series) {
   self->send(et, .3f);
   self->send(et, "hello again event testee!");
   self->send(et, "goodbye event testee!");
-  typed_actor<replies_to<get_state_msg>::with<string>> sub_et = et;
-  std::set<string> iface{"caf::replies_to<get_state_msg>::with<@str>",
+  typed_actor<replies_to<get_state_atom>::with<string>> sub_et = et;
+  std::set<string> iface{"caf::replies_to<get_state_atom>::with<@str>",
                          "caf::replies_to<@str>::with<void>",
                          "caf::replies_to<float>::with<void>",
                          "caf::replies_to<@i32>::with<@i32>"};
   CAF_CHECK_EQUAL(join(sub_et->message_types(), ","), join(iface, ","));
-  self->send(sub_et, get_state_msg{});
+  self->send(sub_et, get_state_atom_v);
   // we expect three 42s
   int i = 0;
   self->receive_for(i, 3)([](int value) { CAF_CHECK_EQUAL(value, 42); });
@@ -372,9 +369,9 @@ CAF_TEST(string_delegator_chain) {
   std::set<string> iface{"caf::replies_to<@str>::with<@str>"};
   CAF_CHECK_EQUAL(aut->message_types(), iface);
   self->request(aut, infinite, "Hello World!")
-    .receive([](const string&
-                  answer) { CAF_CHECK_EQUAL(answer, "!dlroW olleH"); },
-             ERROR_HANDLER);
+    .receive(
+      [](const string& answer) { CAF_CHECK_EQUAL(answer, "!dlroW olleH"); },
+      ERROR_HANDLER);
 }
 
 CAF_TEST(maybe_string_delegator_chain) {
@@ -383,13 +380,13 @@ CAF_TEST(maybe_string_delegator_chain) {
                           system.spawn(maybe_string_reverter));
   CAF_MESSAGE("send empty string, expect error");
   self->request(aut, infinite, "")
-    .receive([](ok_atom,
-                const string&) { CAF_FAIL("unexpected string response"); },
-             [](const error& err) {
-               CAF_CHECK_EQUAL(err.category(), atom("mock"));
-               CAF_CHECK_EQUAL(err.code(), static_cast<uint8_t>(
-                                             mock_errc::cannot_revert_empty));
-             });
+    .receive(
+      [](ok_atom, const string&) { CAF_FAIL("unexpected string response"); },
+      [](const error& err) {
+        CAF_CHECK_EQUAL(err.category(), atom("mock"));
+        CAF_CHECK_EQUAL(err.code(),
+                        static_cast<uint8_t>(mock_errc::cannot_revert_empty));
+      });
   CAF_MESSAGE("send abcd string, expect dcba");
   self->request(aut, infinite, "abcd")
     .receive([](ok_atom, const string& str) { CAF_CHECK_EQUAL(str, "dcba"); },
